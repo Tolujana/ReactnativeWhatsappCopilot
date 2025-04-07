@@ -1,3 +1,5 @@
 <resources>
+<string name="accessibility_service_description">Whatsapp bulk messenger</string>
     <string name="app_name">copilot3</string>
+    
 </resources>
