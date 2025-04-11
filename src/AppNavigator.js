@@ -11,6 +11,12 @@ import GroupExtractor from './screens/GroupExtractor/GroupExtractor';
 import SettingsScreen from './screens/SettingsScreen';
 import SendMessageToNonContact from './screens/SendMessageToNonContact';
 import MessageRetriever from './screens/MessageRetriever/MessageRetriever';
+import CreateEditCampaignScreen from './screens/BulkMessaging/CreateEditCampaignScreen';
+import Home from './screens/Home';
+import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
+import EditCampaignScreen from './screens/BulkMessaging/EditCampaignScreen';
+import ContactFilterScreen from './screens/BulkMessaging/ContactFilterScreen';
+import CampaignSelectionScreen from './screens/BulkMessaging/CampaignSelectionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -18,7 +24,7 @@ const Stack = createNativeStackNavigator();
 // Tab Navigator (bottom tabs)
 const TabNavigator = () => (
   <Tab.Navigator>
-    <Tab.Screen name="Home" component={HomeScreen} />
+    <Tab.Screen name="Home" component={Home} />
     <Tab.Screen name="Settings" component={SettingsScreen} />
 
     {/* <Tab.Screen name="About" component={About} /> */}
@@ -43,6 +49,26 @@ const AppNavigator = () => {
         />
         <Stack.Screen name="GroupExtractor" component={GroupExtractor} />
         <Stack.Screen name="MessageRetriever" component={MessageRetriever} />
+        <Stack.Screen
+          name="CreateCampaign"
+          component={CreateEditCampaignScreen}
+        />
+        <Stack.Screen
+          name="ContactSelectionScreen"
+          component={ContactSelectionScreen}
+        />
+        <Stack.Screen
+          name="EditCampaignScreen"
+          component={EditCampaignScreen}
+        />
+        <Stack.Screen
+          name="ContactFilterScreen"
+          component={ContactFilterScreen}
+        />
+        <Stack.Screen
+          name="CampaignSelectionScreen"
+          component={CampaignSelectionScreen}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
