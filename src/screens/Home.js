@@ -22,7 +22,11 @@ const MENU_ITEMS = {
       icon: 'playlist-edit',
       screen: 'CreateCampaign',
     },
-    {title: 'Send bulk messages', icon: 'send', screen: 'BulkMessaging'},
+    {
+      title: 'Send bulk messages',
+      icon: 'send',
+      screen: 'CampaignSelectionScreen',
+    },
     {title: 'Message history', icon: 'history', screen: 'StatusSaver'},
     {title: 'Settings', icon: 'cog', screen: 'StatusSaver'},
   ],
