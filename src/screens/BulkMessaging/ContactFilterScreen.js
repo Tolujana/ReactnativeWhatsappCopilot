@@ -12,20 +12,12 @@ import CheckBox from '@react-native-community/checkbox'; // Or your preferred ch
 import {launchWhatsappMessage} from '../../util/WhatsappHelper'; // You'll create this helper
 import {getContactsByCampaignId} from '../../util/database';
 import {NativeModules} from 'react-native';
-
-const {WhatsappServiceModule} = NativeModules;
+import useWhatsappReportListener from '../../util/UseWhatsappReporter';
 
 const ContactFilterScreen = ({navigation, route}) => {
   const {campaign, message, media} = route.params;
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState({});
-
-  const launchWhatsappMessage = (contacts, whatsappType) => {
-    WhatsappServiceModule.startSendingMessages(
-      JSON.stringify(contacts),
-      whatsappType, //
-    );
-  };
 
   useEffect(() => {
     getContactsByCampaignId(campaign.id, loadedContacts => {
@@ -45,26 +37,44 @@ const ContactFilterScreen = ({navigation, route}) => {
     }));
   };
 
-  useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(
-      'onMessageSendReport',
-      report => {
-        console.log('WhatsApp sending finished:', report);
-        Alert.alert(
-          'Messages Sent',
-          `Successfully sent ${report.sent_count} of ${report.total} messages.`,
-        );
-      },
-    );
+  // useWhatsappReportListener();
 
-    return () => subscription.remove();
-  }, []);
+  // useEffect(() => {
+  //   const subscription = DeviceEventEmitter.addListener(
+  //     'onMessageSendReport',
+  //     report => {
+  //       console.log('WhatsApp sending finished:', report);
+  //       Alert.alert(
+  //         'Messages Sent',
+  //         `Successfully sent ${report.sent_count} of ${report.total} messages.`,
+  //       );
+  //     },
+  //   );
+
+  //   return () => subscription.remove();
+  // }, []);
+
+  // useEffect(() => {
+  //   const subscription = DeviceEventEmitter.addListener(
+  //     'com.copilot3.WHATSAPP_RESULT',
+  //     report => {
+  //       console.log('WhatsApp sending finished:', report);
+  //       const successfulContacts = JSON.parse(report.success_list);
+  //       Alert.alert(
+  //         'Messages Sent',
+  //         `Successfully sent ${successfulContacts.length} messages.`,
+  //       );
+  //     },
+  //   );
+
+  //   return () => subscription.remove();
+  // }, []);
 
   const handleSendMessages = () => {
     const contactsToSend = contacts.filter(
       contact => selectedContacts[contact.id],
     );
-
+    console.log('this is the format', contactsToSend);
     if (contactsToSend.length === 0) {
       Alert.alert('No Contacts', 'Please select at least one contact.');
       return;
@@ -83,11 +93,17 @@ const ContactFilterScreen = ({navigation, route}) => {
     const personalizedMessages = contactsToSend.map(contact => ({
       phone: contact.phone,
       message: replaceContactPlaceholders(message, contact),
+      name: contact.name,
       mediaPath: contact.mediaPath, // supports per-contact mediaPath fallback
     }));
     console.log('this is persona', personalizedMessages);
     // Assuming `launchWhatsappMessage` expects (array of {phone, message, mediaPath}, type)
-    launchWhatsappMessage(personalizedMessages, 'com.Whatsapp');
+
+    navigation.navigate('WhatsappResultScreen', {
+      totalContacts: personalizedMessages,
+    });
+
+    launchWhatsappMessage(personalizedMessages, 'com.whatsapp.w4b');
   };
 
   const renderContact = ({item}) => (
