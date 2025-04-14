@@ -13,7 +13,8 @@ import {launchImageLibrary} from 'react-native-image-picker';
 import {openAccessibilitySettings} from '../../util/AccessibilityService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const BulkMessagingScreen = ({navigation}) => {
+const BulkMessagingScreen = ({navigation, route}) => {
+  const {campaign} = route.params;
   const [message, setMessage] = useState('');
   const [media, setMedia] = useState(null);
 
@@ -61,9 +62,10 @@ const BulkMessagingScreen = ({navigation}) => {
       return;
     }
 
-    navigation.navigate('CampaignSelectionScreen', {
+    navigation.navigate('ContactFilterScreen', {
       message,
       media,
+      campaign,
     });
   };
 
