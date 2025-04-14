@@ -25,6 +25,58 @@ export const createTables = () => {
         phone TEXT
       );`,
     );
+    tx.executeSql(
+      `CREATE TABLE IF NOT EXISTS sentmessages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT,
+    data TEXT
+  );`,
+    );
+  });
+};
+
+export const insertSentMessage = (successList, date, callback) => {
+  const stringifiedData = JSON.stringify(successList);
+
+  db.transaction(tx => {
+    tx.executeSql(
+      'INSERT INTO sentmessages (date, data) VALUES (?, ?);',
+      [date, stringifiedData],
+      (_, result) => {
+        console.log('✅ Sent message inserted:', result.insertId);
+        if (callback) callback(result.insertId);
+      },
+      (_, error) => {
+        console.error('❌ Insert sent message error:', error);
+        return false;
+      },
+    );
+  });
+};
+
+export const getMessageReport = callback => {
+  db.transaction(tx => {
+    tx.executeSql(
+      'SELECT * FROM sentmessages ORDER BY date DESC;',
+      [],
+      (_, {rows}) => {
+        const reportList = [];
+        for (let i = 0; i < rows.length; i++) {
+          const item = rows.item(i);
+          reportList.push({
+            id: item.id,
+            date: item.date,
+            data: JSON.parse(item.data),
+          });
+        }
+        callback(reportList);
+      },
+      (_, error) => {
+        console.error('❌ Error fetching message report:', error);
+        callback([]);
+        return false;
+      },
+    );
   });
 };
 
