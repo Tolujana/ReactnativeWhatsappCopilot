@@ -1,5 +1,9 @@
 package com.copilot3;
-
+import com.facebook.react.bridge.Arguments;
+import com.copilot3.MainApplication;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
@@ -20,13 +24,19 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class WhatsAppAccessibilityService extends AccessibilityService {
 
+public class WhatsAppAccessibilityService extends AccessibilityService {
+private ReactApplicationContext reactContext;
     private static final String TAG = "WAService";
     private List<Contact> contactsToSend = new ArrayList<>();
     private int currentContactIndex = 0;
     private Handler handler = new Handler();
-    private List<String> successfulContacts = new ArrayList<>(); // <-- Added: to track sent contacts
+    //private List<String> successfulContacts = new ArrayList<>();
+    private List<JSONObject> successfulContacts = new ArrayList<>();
+    // <-- Added: to track sent contacts
+     // ✅ Holds the currently selected WhatsApp package
+    private String selectedWhatsAppPackage = "com.whatsapp";
+
 
     @Override
     public void onServiceConnected() {
@@ -46,6 +56,8 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
         if (intent != null && "START_SENDING_WHATSAPP".equals(intent.getAction())) {
             try {
                 String contactsJson = intent.getStringExtra("contacts_json");
+                selectedWhatsAppPackage = intent.getStringExtra("whatsapp_type");
+                  Log.d(TAG, "Selected WhatsApp package: " + selectedWhatsAppPackage);
                 contactsToSend = parseContacts(contactsJson);
                 currentContactIndex = 0;
                 successfulContacts.clear(); // <-- Added: clear previous state
@@ -65,8 +77,9 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
                 JSONObject obj = arr.getJSONObject(i);
                 String phone = obj.getString("phone");
                 String message = obj.getString("message");
+                String name = obj.getString("name");
                 String mediaPath = obj.optString("mediaPath", null);
-                list.add(new Contact(phone, message, mediaPath));
+                list.add(new Contact(phone, message,name, mediaPath));
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing contact JSON", e);
@@ -76,16 +89,19 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
 
     private void openNextContact() {
         if (currentContactIndex >= contactsToSend.size()) {
+             Log.d(TAG, "current index"+ currentContactIndex);
             sendReportToApp(); // <-- Added: send broadcast and return to app
             stopSelf();
             return;
         }
-
+         Log.d(TAG, "current index"+ currentContactIndex);
         final Contact contact = contactsToSend.get(currentContactIndex);
         currentContactIndex++;
-
+           
         Intent launchIntent = new Intent(Intent.ACTION_VIEW);
         launchIntent.setData(Uri.parse("https://wa.me/" + contact.phone.replace("+", "")));
+        launchIntent.setPackage( selectedWhatsAppPackage);
+       
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(launchIntent);
 
@@ -118,7 +134,18 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
             sendIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(sendIntent);
 
-            successfulContacts.add(contact.phone); // <-- Added: mark as success
+            //successfulContacts.add(contact.phone); // <-- Added: mark as success
+          
+                try {
+                JSONObject obj = new JSONObject();
+                 obj.put("phone", contact.phone);
+                 obj.put("name", contact.name);
+                 obj.put("message", contact.message);
+                successfulContacts.add(obj);
+            } catch (Exception e) {
+                Log.e(TAG, "Error creating JSON object", e);
+            }
+                
             handler.postDelayed(this::openNextContact, 8000);
 
         } catch (Exception e) {
@@ -155,7 +182,19 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
                 sendButton.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             }
 
-            successfulContacts.add(contact.phone); // <-- Added: mark as success
+                try {
+                JSONObject obj = new JSONObject();
+                 obj.put("phone", contact.phone);
+                 obj.put("name", contact.name);
+                 obj.put("message", contact.message);
+                successfulContacts.add(obj);
+                } catch (Exception e) {
+                 Log.e(TAG, "Error creating JSON object", e);
+                }
+
+
+
+            //successfulContacts.add(contact.phone); // <-- Added: mark as success
         } else {
             Log.e(TAG, "Input field not found or not editable");
         }
@@ -175,18 +214,34 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
         return (nodes != null && !nodes.isEmpty()) ? nodes.get(0) : null;
     }
 
-    private void sendReportToApp() { // <-- Added: send broadcast back to app
-        Intent resultIntent = new Intent("com.copilot3.WHATSAPP_RESULT");
-        resultIntent.putExtra("success_list", new JSONArray(successfulContacts).toString());
-        sendBroadcast(resultIntent);
 
-        // Optional: launch app main activity
-        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(launchIntent);
-        }
+    
+private void sendReportToApp() {
+    Intent resultIntent = new Intent("com.copilot3.WHATSAPP_RESULT");
+    resultIntent.putExtra("success_list", new JSONArray(successfulContacts).toString());
+    sendBroadcast(resultIntent); // <-- You can keep this if needed elsewhere
+    Log.d(TAG, "successful:"+new JSONArray(successfulContacts).toString());
+    // React Native event emit
+    WritableMap params = Arguments.createMap();
+    params.putString("success_list", new JSONArray(successfulContacts).toString());
+    params.putInt("sent_count", successfulContacts.size());
+    params.putInt("total", contactsToSend.size());
+
+    if (MainApplication.getReactContext() != null) {
+        MainApplication.getReactContext()
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+            .emit("onMessageSendReport", params);
     }
+
+    // Optionally reopen app
+    Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+    if (launchIntent != null) {
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(launchIntent);
+    }
+}
+
+  
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -200,12 +255,14 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
     static class Contact {
         String phone;
         String message;
+        String name;
         String mediaPath;
 
-        Contact(String phone, String message, String mediaPath) {
+        Contact(String phone, String message, String name,String mediaPath) {
             this.phone = phone;
             this.message = message;
             this.mediaPath = mediaPath;
+            this.name = name;
         }
     }
 }
