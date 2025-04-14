@@ -1,13 +1,9 @@
-import {Linking} from 'react-native';
+import {NativeModules} from 'react-native';
+const {WhatsappServiceModule} = NativeModules;
 
-export const launchWhatsappMessage = (phone, message, media) => {
-  const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(
-    message,
-  )}`;
-
-  Linking.openURL(url).catch(() => {
-    alert('WhatsApp not installed or invalid number');
-  });
-
-  // 📌 To send media, you'd need native code or automation
+export const launchWhatsappMessage = (contacts, whatsappType) => {
+  WhatsappServiceModule.startSendingMessages(
+    JSON.stringify(contacts),
+    whatsappType, //
+  );
 };
