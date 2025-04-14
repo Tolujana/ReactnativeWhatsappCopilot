@@ -17,6 +17,7 @@ import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScre
 import EditCampaignScreen from './screens/BulkMessaging/EditCampaignScreen';
 import ContactFilterScreen from './screens/BulkMessaging/ContactFilterScreen';
 import CampaignSelectionScreen from './screens/BulkMessaging/CampaignSelectionScreen';
+import WhatsappResultScreen from './screens/WhatsappResultScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -68,6 +69,10 @@ const AppNavigator = () => {
         <Stack.Screen
           name="CampaignSelectionScreen"
           component={CampaignSelectionScreen}
+        />
+        <Stack.Screen
+          name="WhatsappResultScreen"
+          component={WhatsappResultScreen}
         />
       </Stack.Navigator>
     </NavigationContainer>
