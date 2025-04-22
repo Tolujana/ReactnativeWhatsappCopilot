@@ -1,11 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import {View, StyleSheet, ScrollView, Alert} from 'react-native';
 import {
   DataTable,
   Checkbox,
@@ -14,24 +8,21 @@ import {
   Button,
   Text,
   Portal,
-  Dialog,
-  TextInput,
 } from 'react-native-paper';
 import {useNavigation} from '@react-navigation/native';
 import {
   getCampaigns,
-  deleteCampaignByIds,
+  deleteCampaignById,
   insertCampaign,
   getContactCountForCampaign,
 } from '../../util/database';
+import CampaignDialog from '../../components/CampaignDialog';
 
 const CreateEditCampaignScreen = () => {
   const navigation = useNavigation();
   const [campaigns, setCampaigns] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showDialog, setShowDialog] = useState(false);
-  const [newCampaignName, setNewCampaignName] = useState('');
-  const [newCampaignDescription, setNewCampaignDescription] = useState('');
 
   useEffect(() => {
     loadCampaigns();
@@ -48,11 +39,10 @@ const CreateEditCampaignScreen = () => {
           });
         }),
       );
-
-      console.log('📦 Loaded campaigns with counts:', campaignsWithCounts);
       setCampaigns(campaignsWithCounts);
     });
   };
+
   const handleCheckboxToggle = id => {
     setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id],
@@ -73,24 +63,31 @@ const CreateEditCampaignScreen = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            deleteCampaignByIds(selectedIds, () => {
-              setSelectedIds([]);
-              loadCampaigns();
+            selectedIds.forEach(id => {
+              deleteCampaignById(id, () => {});
             });
+            setSelectedIds([]);
+            loadCampaigns();
           },
         },
       ],
     );
   };
 
-  const handleSaveCampaign = () => {
-    if (!newCampaignName.trim()) return;
-    insertCampaign(newCampaignName, newCampaignDescription, insertedId => {
+  const handleSaveCampaign = ({name, description, extraFields}) => {
+    if (!name.trim()) return;
+
+    insertCampaign(name, description, extraFields, insertedId => {
+      if (!insertedId) {
+        Alert.alert('Insert failed. Please try again.');
+        return;
+      }
+
       setShowDialog(false);
-      setNewCampaignName('');
-      setNewCampaignDescription('');
       loadCampaigns();
-      navigation.navigate('ContactSelectionScreen', {campaignId: insertedId});
+      navigation.navigate('ContactSelectionScreen2', {
+        campaign: {id: insertedId, extraFields},
+      });
     });
   };
 
@@ -135,7 +132,6 @@ const CreateEditCampaignScreen = () => {
         </DataTable>
       </ScrollView>
 
-      {/* Delete Button */}
       {selectedIds.length > 0 && (
         <Button
           mode="contained"
@@ -146,7 +142,6 @@ const CreateEditCampaignScreen = () => {
         </Button>
       )}
 
-      {/* Floating Action Button */}
       <FAB
         style={styles.fab}
         icon="plus"
@@ -154,32 +149,12 @@ const CreateEditCampaignScreen = () => {
         onPress={() => setShowDialog(true)}
       />
 
-      {/* New Campaign Dialog */}
       <Portal>
-        <Dialog visible={showDialog} onDismiss={() => setShowDialog(false)}>
-          <Dialog.Title>Create Campaign</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="Name"
-              value={newCampaignName}
-              onChangeText={setNewCampaignName}
-              mode="outlined"
-              style={{marginBottom: 10}}
-            />
-            <TextInput
-              label="Description"
-              value={newCampaignDescription}
-              onChangeText={setNewCampaignDescription}
-              mode="outlined"
-              multiline
-              numberOfLines={3}
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setShowDialog(false)}>Cancel</Button>
-            <Button onPress={handleSaveCampaign}>Save</Button>
-          </Dialog.Actions>
-        </Dialog>
+        <CampaignDialog
+          visible={showDialog}
+          onDismiss={() => setShowDialog(false)}
+          onSave={handleSaveCampaign}
+        />
       </Portal>
     </View>
   );
@@ -188,10 +163,7 @@ const CreateEditCampaignScreen = () => {
 export default CreateEditCampaignScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
+  container: {flex: 1, padding: 16},
   title: {
     fontSize: 20,
     marginBottom: 12,
@@ -205,18 +177,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
     overflow: 'hidden',
   },
-  header: {
-    backgroundColor: '#e0e0e0',
-  },
-  row: {
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 30,
-  },
+  header: {backgroundColor: '#e0e0e0'},
+  row: {borderBottomWidth: 1, borderColor: '#eee'},
+  fab: {position: 'absolute', right: 16, bottom: 30},
   deleteBtn: {
     position: 'absolute',
     left: 16,

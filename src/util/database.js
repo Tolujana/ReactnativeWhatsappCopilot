@@ -14,17 +14,26 @@ export const createTables = () => {
       `CREATE TABLE IF NOT EXISTS campaigns (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
+        extra_fields TEXT,
         description TEXT
       );`,
     );
     tx.executeSql(
       `CREATE TABLE IF NOT EXISTS contacts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        campaign_id INTEGER,
-        name TEXT,
-        phone TEXT
-      );`,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER,
+    name TEXT,
+    phone TEXT,
+    extra_field TEXT
+  );`,
+      [],
+      () => console.log('Contacts table created successfully'),
+      (txObj, error) => {
+        console.log('Error creating contacts table', error);
+        return true; // to indicate error handled
+      },
     );
+
     tx.executeSql(
       `CREATE TABLE IF NOT EXISTS sentmessages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,18 +89,26 @@ export const getMessageReport = callback => {
   });
 };
 
-export const insertCampaign = (name, description, callback) => {
+export const insertCampaign = (
+  name,
+  description,
+  extraFields = [],
+  callback,
+) => {
+  const extraFieldsJSON = JSON.stringify(extraFields);
+
   db.transaction(tx => {
     tx.executeSql(
-      'INSERT INTO campaigns (name, description) VALUES (?, ?);',
-      [name, description],
+      'INSERT INTO campaigns (name, description, extra_fields) VALUES (?, ?, ?);',
+      [name, description, extraFieldsJSON],
       (_, result) => {
         console.log('Inserted Campaign ID:', result.insertId);
-        callback(result.insertId);
+        callback(result.insertId); // success
       },
       (_, error) => {
-        console.error('Insert Error:', error);
-        return true;
+        console.error('Insert Error:', error || 'No error object provided');
+        callback(null); // call callback with null or handle differently
+        return false; // allow further propagation if needed
       },
     );
   });
@@ -154,34 +171,72 @@ export const getContactsByCampaignId = (campaignId, callback) => {
   });
 };
 
-export const deleteContact = (id, callback) => {
-  db.transaction(tx => {
-    tx.executeSql('DELETE FROM contacts WHERE id = ?', [id], () => callback());
-  });
+export const deleteContacts = (ids = [], callback) => {
+  if (!ids.length) return;
+
+  db.transaction(
+    tx => {
+      ids.forEach(id => {
+        tx.executeSql('DELETE FROM contacts WHERE id = ?;', [id]);
+      });
+    },
+    error => {
+      console.error('Delete contacts error:', error);
+    },
+    () => {
+      console.log('Deleted contacts:', ids);
+      if (callback) callback(); // Fetch contacts or refresh list
+    },
+  );
 };
 
-export const insertContact2 = (campaignId, name, phone, callback) => {
+export const updateContact = (
+  contactId,
+  name,
+  phone,
+  extraFields,
+  callback,
+) => {
+  const extraFieldString = JSON.stringify(extraFields || {});
+
   db.transaction(tx => {
     tx.executeSql(
-      'INSERT INTO contacts (campaign_id, name, phone) VALUES (?, ?, ?)',
-      [campaignId, name, phone],
-      () => callback(),
+      `UPDATE contacts 
+       SET name = ?, phone = ?, extra_field = ? 
+       WHERE id = ?;`,
+      [name, phone, extraFieldString, contactId],
+      (_, result) => {
+        console.log('Contact updated:', result.rowsAffected);
+        if (callback) callback();
+      },
+      error => {
+        console.error('Update contact error:', error);
+        return true;
+      },
     );
   });
 };
 
-export const insertContact = (campaignId, name, phone, callback) => {
+export const insertContact = (
+  campaignId,
+  name,
+  phone,
+  extraFields,
+  callback,
+) => {
+  const extraFieldString = JSON.stringify(extraFields || {});
+
   db.transaction(tx => {
     tx.executeSql(
-      'INSERT INTO contacts (campaign_id, name, phone) VALUES (?, ?, ?)',
-      [campaignId, name, phone],
+      `INSERT INTO contacts (campaign_id, name, phone, extra_field) VALUES (?, ?, ?, ?);`,
+      [campaignId, name, phone, extraFieldString],
       (_, result) => {
         console.log('Contact inserted:', result.insertId);
-        if (callback) callback(result.insertId);
+        if (callback) callback(); // ✅ Callback should be called here
       },
-      (_, error) => {
-        console.log('Error inserting contact:', error);
-        return false;
+      error => {
+        console.error('Insert contact error:', error);
+        return true; // Required to signal the error
       },
     );
   });

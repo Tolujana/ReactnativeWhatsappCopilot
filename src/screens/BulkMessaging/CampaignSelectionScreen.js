@@ -27,7 +27,7 @@ const CampaignSelectionScreen = ({navigation, route}) => {
 
     const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
 
-    navigation.navigate('ContactFilterScreen', {
+    navigation.navigate('BulkMessaging', {
       campaign: selectedCampaign,
       message,
       media,

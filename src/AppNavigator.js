@@ -13,11 +13,14 @@ import SendMessageToNonContact from './screens/SendMessageToNonContact';
 import MessageRetriever from './screens/MessageRetriever/MessageRetriever';
 import CreateEditCampaignScreen from './screens/BulkMessaging/CreateEditCampaignScreen';
 import Home from './screens/Home';
-import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
+//import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
 import EditCampaignScreen from './screens/BulkMessaging/EditCampaignScreen';
 import ContactFilterScreen from './screens/BulkMessaging/ContactFilterScreen';
 import CampaignSelectionScreen from './screens/BulkMessaging/CampaignSelectionScreen';
 import WhatsappResultScreen from './screens/WhatsappResultScreen';
+import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
+import ContactSelectScreen from './components/ContactSelectScreen';
+//import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -51,11 +54,15 @@ const AppNavigator = () => {
         <Stack.Screen name="GroupExtractor" component={GroupExtractor} />
         <Stack.Screen name="MessageRetriever" component={MessageRetriever} />
         <Stack.Screen
+          name="ContactSelectScreen"
+          component={ContactSelectScreen}
+        />
+        <Stack.Screen
           name="CreateCampaign"
           component={CreateEditCampaignScreen}
         />
         <Stack.Screen
-          name="ContactSelectionScreen"
+          name="ContactSelectionScreen2"
           component={ContactSelectionScreen}
         />
         <Stack.Screen

@@ -80,7 +80,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       return;
     }
 
-    function replaceContactPlaceholders(template, contact) {
+    function replaceContactPlaceholders2(template, contact) {
       return template
         .replace(/{{name}}/g, contact.name || '')
         .replace(/{{phone}}/g, contact.phone || '')
@@ -88,6 +88,17 @@ const ContactFilterScreen = ({navigation, route}) => {
           /{{title}}/g,
           contact.title ? contact.title : contact.name || '',
         );
+    }
+
+    function replaceContactPlaceholders(template, contact) {
+      //const segments = template.split('----'); // Split by delimiter or just one element
+      return template.map(segment =>
+        segment
+          .replace(/{{name}}/g, contact.name || '')
+          .replace(/{{phone}}/g, contact.phone || '')
+          .replace(/{{title}}/g, contact.title || contact.name || '')
+          .trim(),
+      );
     }
 
     const personalizedMessages = contactsToSend.map(contact => ({

@@ -6,12 +6,14 @@ import {
   updateCampaign,
   deleteContact,
 } from '../../util/database';
+import ContactSelectionScreen from './ContactSelectionScreen';
 
 export default function EditCampaignScreen({route, navigation}) {
   const {campaign} = route.params;
   const [name, setName] = useState(campaign.name);
   const [description, setDescription] = useState(campaign.description);
   const [contacts, setContacts] = useState([]);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     fetchContacts();
@@ -33,42 +35,39 @@ export default function EditCampaignScreen({route, navigation}) {
 
   return (
     <View style={{flex: 1, padding: 16}}>
-      <TextInput
-        label="Campaign Name"
-        value={name}
-        onChangeText={setName}
+      {/* Toggle Button */}
+      <Button
         mode="outlined"
-        style={{marginBottom: 10}}
-      />
-      <TextInput
-        label="Description"
-        value={description}
-        onChangeText={setDescription}
-        mode="outlined"
-        style={{marginBottom: 20}}
-      />
-      <Button mode="contained" onPress={handleUpdate}>
-        Save Changes
+        onPress={() => setShowForm(prev => !prev)}
+        style={{marginBottom: 16}}>
+        {showForm ? 'Hide Campaign Details' : 'Edit Campaign Details'}
       </Button>
+      {/* Form Section */}
+      {showForm && (
+        <View>
+          <TextInput
+            label="Campaign Name"
+            value={name}
+            onChangeText={setName}
+            mode="outlined"
+            style={{marginBottom: 10}}
+          />
+          <TextInput
+            label="Description"
+            value={description}
+            onChangeText={setDescription}
+            mode="outlined"
+            style={{marginBottom: 20}}
+          />
+          <Button mode="contained" onPress={handleUpdate}>
+            Save Changes
+          </Button>
+        </View>
+      )}
 
       <Text style={{marginTop: 20, marginBottom: 10}}>Contacts:</Text>
-      <FlatList
-        data={contacts}
-        keyExtractor={item => item.id.toString()}
-        renderItem={({item}) => (
-          <Card style={{marginBottom: 10}}>
-            <Card.Title
-              title={item.name}
-              subtitle={item.phone}
-              right={() => (
-                <Button onPress={() => handleDeleteContact(item.id)}>
-                  Delete
-                </Button>
-              )}
-            />
-          </Card>
-        )}
-      />
+
+      <ContactSelectionScreen campaignData={{campaign: campaign}} />
     </View>
   );
 }
