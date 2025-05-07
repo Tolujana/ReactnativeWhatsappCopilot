@@ -13,13 +13,13 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import {openAccessibilitySettings} from '../../util/AccessibilityService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {NativeModules} from 'react-native';
 
 const BulkMessagingScreen = ({navigation, route}) => {
   const {campaign} = route.params;
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [media, setMedia] = useState(null);
-
   const [editingIndex, setEditingIndex] = useState(null);
 
   useEffect(() => {
@@ -64,15 +64,33 @@ const BulkMessagingScreen = ({navigation, route}) => {
     }
   };
 
+  const {AccessibilityHelper} = NativeModules;
+
+  const openSettings = () => {
+    AccessibilityHelper.openAccessibilitySettings();
+  };
+
+  const checkServiceEnabled = async () => {
+    const serviceId = 'com.copilot.copilot3.MyAccessibilityService'; // Adjust this!
+    const isEnabled = await AccessibilityHelper.isAccessibilityServiceEnabled(
+      serviceId,
+    );
+    console.log('Is service enabled:', isEnabled);
+  };
+
   const checkAccessibilityPermission = async () => {
-    const enabled = await AccessibilityInfo.isScreenReaderEnabled();
+    const serviceId = 'com.copilot.copilot3.MyAccessibilityService'; // Adjust this!
+    const enabled = await AccessibilityHelper.isAccessibilityServiceEnabled(
+      serviceId,
+    );
+    ///const enabled = await AccessibilityInfo.isScreenReaderEnabled();
     if (!enabled) {
       Alert.alert(
         'Permission Required',
         'Accessibility permissions are needed to send WhatsApp messages. Please enable the Accessibility Service for this app.',
         [
           {text: 'Cancel', style: 'cancel'},
-          {text: 'Go to Settings', onPress: openAccessibilitySettings},
+          {text: 'Go to Settings', onPress: openSettings},
         ],
         {cancelable: true},
       );
@@ -169,18 +187,19 @@ const BulkMessagingScreen = ({navigation, route}) => {
         </TouchableOpacity> */}
 
       <View style={styles.placeholderRow}>
-        <TouchableOpacity
-          style={styles.placeholderButton}
-          onPress={() => insertPlaceholder('name')}>
-          <Text style={styles.placeholderText}>+ Name</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.placeholderButton}
-          onPress={() => insertPlaceholder('phone')}>
-          <Text style={styles.placeholderText}>+ Phone</Text>
-        </TouchableOpacity>
+        {['name', 'phone', ...(JSON.parse(campaign?.extra_fields) || [])].map(
+          (field, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.placeholderButton}
+              onPress={() => insertPlaceholder(field)}>
+              <Text style={styles.placeholderText}>
+                + {field.charAt(0).toUpperCase() + field.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ),
+        )}
       </View>
-
       <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
         <Icon name="attachment" size={22} color="#4F46E5" />
         <Text style={{marginLeft: 6, color: '#4F46E5'}}>Attach Media</Text>

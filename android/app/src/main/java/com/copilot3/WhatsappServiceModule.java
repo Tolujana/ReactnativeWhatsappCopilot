@@ -1,5 +1,5 @@
 package com.copilot3;
-
+import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -47,8 +47,10 @@ public class WhatsappServiceModule extends ReactContextBaseJavaModule {
     }
 
     private boolean isAccessibilityServiceEnabled() {
-        return true; // stub: replace with real check if needed
-    }
+    ComponentName expectedComponent = new ComponentName(reactContext, WhatsAppAccessibilityService.class);
+    String enabledServices = Settings.Secure.getString(reactContext.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+    return enabledServices != null && enabledServices.contains(expectedComponent.flattenToString());
+}
 
     // Call this method from your Service when sending is complete
     public void sendReportToJS(int sentCount, int total) {

@@ -90,15 +90,50 @@ const ContactFilterScreen = ({navigation, route}) => {
         );
     }
 
-    function replaceContactPlaceholders(template, contact) {
+    function replaceContactPlaceholders3(template, contact) {
       //const segments = template.split('----'); // Split by delimiter or just one element
       return template.map(segment =>
         segment
-          .replace(/{{name}}/g, contact.name || '')
-          .replace(/{{phone}}/g, contact.phone || '')
-          .replace(/{{title}}/g, contact.title || contact.name || '')
+          .replace('{{name}}', contact.name || '')
+          .replace('{{phone}}', contact.phone || '')
+          .replace('{{title}}', contact.title || contact.name || '')
           .trim(),
       );
+    }
+
+    function replaceContactPlaceholders(template, contact) {
+      const replacements = {
+        '{{name}}': contact.name || '',
+        '{{phone}}': contact.phone || '',
+      };
+
+      if (contact.extra_field) {
+        const extrafield = JSON.parse(contact.extra_field);
+        Object.keys(extrafield).forEach(key => {
+          replacements[`{{${key}}}`] = extrafield[key] || '';
+        });
+      }
+
+      const delimiter = '$@#__DELIMITER__#@%';
+      const joinedString = template.join(delimiter);
+
+      if (joinedString.length > 1000) {
+        Alert.alert(
+          'Error',
+          'Template string is too long. Please reduce the template size.',
+        );
+        return template; // or return an empty array, depending on your requirements
+      }
+
+      let replacedString = joinedString;
+      Object.keys(replacements).forEach(placeholder => {
+        replacedString = replacedString.replaceAll(
+          placeholder,
+          replacements[placeholder],
+        );
+      });
+
+      return replacedString.split(delimiter).map(segment => segment.trim());
     }
 
     const personalizedMessages = contactsToSend.map(contact => ({

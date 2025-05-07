@@ -56,11 +56,20 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         }
 
         setServiceInfo(info); // ✅ Set service info with user-selected package
+
+        if ("START_SENDING_WHATSAPP".equals(intent.getAction())) {
+    String contactsJson = intent.getStringExtra("contacts_json");
+    ListToSend = parseContacts(contactsJson);
+    currentContactIndex = 0;
+    successfulContacts.clear();
+    openNextContact(); // <- Launch WhatsApp for the first contact
+}
     } else {
         Log.w(TAG, "Intent or whatsapp_type extra was null");
     }
 
-    return super.onStartCommand(intent, flags, startId);
+    //return super.onStartCommand(intent, flags, startId);
+    return START_STICKY;
     }
 
     @Override
@@ -217,7 +226,7 @@ public int onStartCommand(Intent intent, int flags, int startId) {
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, contact.messages.get(index));
             inputField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
 
-            AccessibilityNodeInfo sendButton = findNodeByViewId(root, "com.whatsapp:id/send");
+            AccessibilityNodeInfo sendButton = findNodeByViewId(root, selectedWhatsAppPackage + ":id/send");
             if (sendButton == null) {
                 //sendButton = findNodeByViewId(root, "com.whatsapp.w4b:id/send");
                 openNextContact();

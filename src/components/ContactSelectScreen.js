@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import {Text, Checkbox, Button} from 'react-native-paper';
 import Contacts from 'react-native-contacts';
+import {openPicker} from '../util/AccessibilityService';
 
 export default function ContactSelectScreen({navigation, route}) {
   const {onDone} = route.params;
@@ -81,6 +82,9 @@ export default function ContactSelectScreen({navigation, route}) {
           })
         )}
       </ScrollView>
+      <Button mode="contained" onPress={openPicker} style={styles.doneBtn}>
+        Done2
+      </Button>
       <Button mode="contained" onPress={handleDone} style={styles.doneBtn}>
         Done
       </Button>

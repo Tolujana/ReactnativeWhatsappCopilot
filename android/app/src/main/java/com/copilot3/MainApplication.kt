@@ -1,5 +1,7 @@
 package com.copilot3
+import com.copilot3.ServiceHelperPackage;
 import com.copilot3.AccessibilityPackage;
+import com.copilot3.ContactPickerPackage;
 import com.copilot3.WhatsappServicePackage;
 import android.app.Application
 import com.facebook.react.PackageList
@@ -38,9 +40,10 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-              //add(AccessibilityPackage())
+             add(AccessibilityPackage())
+              add(ServiceHelperPackage())
              add( WhatsappServicePackage());
+             add(ContactPickerPackage());
             }
 
         override fun getJSMainModuleName(): String = "index"
