@@ -39,10 +39,10 @@ public class WhatsAppAccessibilityService extends AccessibilityService {
 
 @Override
 public int onStartCommand(Intent intent, int flags, int startId) {
-    if (intent != null && intent.hasExtra("whatsapp_type")) {
-        selectedWhatsAppPackage = intent.getStringExtra("whatsapp_type");
+    if (intent != null && intent.hasExtra("app_type")) {
+        selectedWhatsAppPackage = intent.getStringExtra("app_type");
 
-        Log.d(TAG, "Received WhatsApp package: " + selectedWhatsAppPackage);
+        Log.d(TAG, "Received package: " + selectedWhatsAppPackage);
 
         // Safely set AccessibilityServiceInfo here
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
@@ -57,7 +57,7 @@ public int onStartCommand(Intent intent, int flags, int startId) {
 
         setServiceInfo(info); // ✅ Set service info with user-selected package
 
-        if ("START_SENDING_WHATSAPP".equals(intent.getAction())) {
+        if ("START_SENDING_MESSAGES".equals(intent.getAction())) {
     String contactsJson = intent.getStringExtra("contacts_json");
     ListToSend = parseContacts(contactsJson);
     currentContactIndex = 0;
@@ -65,7 +65,7 @@ public int onStartCommand(Intent intent, int flags, int startId) {
     openNextContact(); // <- Launch WhatsApp for the first contact
 }
     } else {
-        Log.w(TAG, "Intent or whatsapp_type extra was null");
+        Log.w(TAG, "Intent or app_type extra was null");
     }
 
     //return super.onStartCommand(intent, flags, startId);
@@ -98,7 +98,7 @@ public int onStartCommand(Intent intent, int flags, int startId) {
     //     if (intent != null && "START_SENDING_WHATSAPP".equals(intent.getAction())) {
     //         try {
     //             String contactsJson = intent.getStringExtra("contacts_json");
-    //             selectedWhatsAppPackage = intent.getStringExtra("whatsapp_type");
+    //             selectedWhatsAppPackage = intent.getStringExtra("app_type");
     //             Log.d(TAG, "Selected WhatsApp package: " + selectedWhatsAppPackage);
     //             contactsToSend = parseContacts(contactsJson);
     //             currentContactIndex = 0;
@@ -148,11 +148,17 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         }
 
         final Contact contact = ListToSend.get(currentContactIndex);
-        Intent launchIntent = new Intent(Intent.ACTION_VIEW);
-        launchIntent.setData(Uri.parse("https://wa.me/" + contact.phone.replace("+", "")));
-        launchIntent.setPackage(selectedWhatsAppPackage);
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(launchIntent);
+        // Intent launchIntent = new Intent(Intent.ACTION_VIEW);
+        // launchIntent.setData(Uri.parse("https://wa.me/" + contact.phone.replace("+", "")));
+        // launchIntent.setPackage(selectedWhatsAppPackage);
+        // launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // startActivity(launchIntent);
+
+        Intent intent = new Intent(Intent.ACTION_SENDTO);
+        intent.setData(Uri.parse("smsto:" + contact.phone));
+         intent.setPackage(selectedWhatsAppPackage);
+         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+         startActivity(intent);
 
         handler.postDelayed(() -> {
             if (contact.mediaPath != null && !contact.mediaPath.isEmpty()) {
