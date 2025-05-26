@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {DataTable, Button, Title, Checkbox} from 'react-native-paper';
 import {launchWhatsappMessage} from '../util/WhatsappHelper';
+import {MyDataTable} from '../components/DataTable';
 
 const WhatsappResultScreen = ({navigation, route}) => {
   const {totalContacts} = route.params;
@@ -78,53 +79,12 @@ const WhatsappResultScreen = ({navigation, route}) => {
             {'\n'}Items in green were successfully sent
           </Text>
 
-          <DataTable style={styles.table}>
-            <DataTable.Header style={styles.tableHeader}>
-              <DataTable.Title style={{flex: 0.5}}>✔</DataTable.Title>
-              <DataTable.Title style={{flex: 1}}>👤 Name</DataTable.Title>
-              <DataTable.Title style={{flex: 2}}>📱 Number</DataTable.Title>
-              <DataTable.Title style={{flex: 1.5}}>💬 Message</DataTable.Title>
-            </DataTable.Header>
-
-            {Array.isArray(updatedList) &&
-              updatedList.map((item, index) => (
-                <DataTable.Row
-                  key={index}
-                  style={{
-                    paddingVertical: 6,
-                    backgroundColor: item.exists ? '#bdf2cb' : '#f2c8bd',
-                  }}>
-                  <DataTable.Cell style={{flex: 0.5}}>
-                    <Checkbox
-                      status={
-                        selectedItems.includes(index) ? 'checked' : 'unchecked'
-                      }
-                      onPress={() => toggleSelectItem(index)}
-                    />
-                  </DataTable.Cell>
-                  <DataTable.Cell style={{flex: 1}}>
-                    <View style={{paddingRight: 1}}>
-                      <Text style={{flexWrap: 'wrap'}}>{item.name}</Text>
-                    </View>
-                  </DataTable.Cell>
-                  <DataTable.Cell style={{flex: 2}}>
-                    <View style={{paddingRight: 1}}>
-                      <Text style={{flexWrap: 'wrap'}}>{item.phone}</Text>
-                    </View>
-                  </DataTable.Cell>
-
-                  <DataTable.Cell style={{flex: 1.5}}>
-                    <Button
-                      contentStyle={{paddingVertical: 2, paddingHorizontal: 1}}
-                      mode="contained"
-                      onPress={() => handleViewMessage(item.message)}
-                      compact>
-                      View Message
-                    </Button>
-                  </DataTable.Cell>
-                </DataTable.Row>
-              ))}
-          </DataTable>
+          {MyDataTable(
+            updatedList,
+            selectedItems,
+            toggleSelectItem,
+            handleViewMessage,
+          )}
           {selectedItems.length > 0 && (
             <View style={{marginTop: 20}}>
               <Button mode="contained" onPress={handleResend} icon="send">
