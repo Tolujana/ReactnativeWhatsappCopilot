@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import RNFS from 'react-native-fs';
 import {
   View,
@@ -33,7 +33,7 @@ import {
 } from '../../util/database';
 import ContactModal from '../../components/ContactModal';
 import ContactTable from '../../components/ContactTable';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import MyFab from '../../components/MyFab';
 
 export default function ContactSelectionScreen({route, campaignData}) {
@@ -63,7 +63,12 @@ export default function ContactSelectionScreen({route, campaignData}) {
   };
 
   const isAnySelected = Object.values(selectedContacts).some(v => v);
-
+  useFocusEffect(
+    useCallback(() => {
+      // This runs every time the screen is focused (comes into view)
+      fetchContacts(); // Your function to load updated contact data
+    }, []),
+  );
   useEffect(() => {
     const fetchContacts = async () => {
       const permission = await requestContactsPermission();
@@ -307,7 +312,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
       }
     }
   };
-
+  console.log('this is the campaing with extrafiled', campaign.extra_fields);
   return (
     <Provider>
       <View style={{flex: 1, padding: 16}}>
@@ -325,7 +330,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
             onSave={handleModalSave}
             initialData={initialModalData}
             isEditMode={isEditMode}
-            extraFieldsKeys={campaign.extraFields}
+            extraFieldsKeys={JSON.parse(campaign.extra_fields)}
           />
           {fabOpen && (
             <>
@@ -343,6 +348,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
                 handleAddContacts={handleAddContacts}
                 setFabOpen={setFabOpen}
                 styling={styles.fabOption}
+                campaign={campaign}
               />
               <FAB
                 small
