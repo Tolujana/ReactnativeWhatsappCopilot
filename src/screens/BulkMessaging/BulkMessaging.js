@@ -22,10 +22,6 @@ const BulkMessagingScreen = ({navigation, route}) => {
   const [media, setMedia] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
 
-  useEffect(() => {
-    checkAccessibilityPermission();
-  }, []);
-
   // Add or update message
   const addMessage = () => {
     const trimmed = inputMessage.trim();
@@ -64,39 +60,6 @@ const BulkMessagingScreen = ({navigation, route}) => {
     }
   };
 
-  const {AccessibilityHelper} = NativeModules;
-
-  const openSettings = () => {
-    AccessibilityHelper.openAccessibilitySettings();
-  };
-
-  const checkServiceEnabled = async () => {
-    const serviceId = 'com.copilot.copilot3.MyAccessibilityService'; // Adjust this!
-    const isEnabled = await AccessibilityHelper.isAccessibilityServiceEnabled(
-      serviceId,
-    );
-    console.log('Is service enabled:', isEnabled);
-  };
-
-  const checkAccessibilityPermission = async () => {
-    const serviceId = 'com.copilot.copilot3.MyAccessibilityService'; // Adjust this!
-    const enabled = await AccessibilityHelper.isAccessibilityServiceEnabled(
-      serviceId,
-    );
-    ///const enabled = await AccessibilityInfo.isScreenReaderEnabled();
-    if (!enabled) {
-      Alert.alert(
-        'Permission Required',
-        'Accessibility permissions are needed to send WhatsApp messages. Please enable the Accessibility Service for this app.',
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {text: 'Go to Settings', onPress: openSettings},
-        ],
-        {cancelable: true},
-      );
-    }
-  };
-
   const insertPlaceholder = placeholder => {
     setInputMessage(prev => `${prev} {{${placeholder}}} `);
   };
@@ -128,7 +91,7 @@ const BulkMessagingScreen = ({navigation, route}) => {
     setInputMessage('');
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (messages.length === 0) {
       Alert.alert('No Messages', 'Please add at least one message.');
       return;
