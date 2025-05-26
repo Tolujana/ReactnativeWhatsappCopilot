@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {View, StyleSheet, ScrollView, Alert} from 'react-native';
 import {
   DataTable,
@@ -9,7 +9,7 @@ import {
   Text,
   Portal,
 } from 'react-native-paper';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {
   getCampaigns,
   deleteCampaignById,
@@ -24,9 +24,12 @@ const CreateEditCampaignScreen = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [showDialog, setShowDialog] = useState(false);
 
-  useEffect(() => {
-    loadCampaigns();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      // This runs every time the screen is focused (comes into view)
+      loadCampaigns(); // Your function to load updated contact data
+    }, []),
+  );
 
   const loadCampaigns = async () => {
     getCampaigns(async campaignsList => {
@@ -86,7 +89,7 @@ const CreateEditCampaignScreen = () => {
       setShowDialog(false);
       loadCampaigns();
       navigation.navigate('ContactSelectionScreen2', {
-        campaign: {id: insertedId, extraFields},
+        campaign: {id: insertedId, extra_fields: JSON.stringify(extraFields)},
       });
     });
   };

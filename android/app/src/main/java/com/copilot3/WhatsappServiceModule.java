@@ -17,7 +17,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 public class WhatsappServiceModule extends ReactContextBaseJavaModule {
 
-    private static final String TAG = "WhatsappServiceModule";
+    private static final String TAG = "ServiceModule";
     private final ReactApplicationContext reactContext;
 
     public WhatsappServiceModule(ReactApplicationContext reactContext) {
@@ -35,8 +35,8 @@ public class WhatsappServiceModule extends ReactContextBaseJavaModule {
     public void startSendingMessages(String contactListJson, String whatsappType) {
         Intent intent = new Intent(reactContext, WhatsAppAccessibilityService.class);
         intent.putExtra("contacts_json", contactListJson);
-        intent.setAction("START_SENDING_WHATSAPP");
-        intent.putExtra("whatsapp_type", whatsappType);
+        intent.setAction("START_SENDING_MESSAGES");
+        intent.putExtra("app_type", whatsappType);
         reactContext.startService(intent);
 
         if (!isAccessibilityServiceEnabled()) {
