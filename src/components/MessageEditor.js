@@ -16,12 +16,13 @@ const MessageEditorModal = ({
   initialMessages,
   campaign,
   handleSave,
+  templateList,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState(initialMessages);
   const [media, setMedia] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
-  console.log('initial message', inputMessage);
+  console.log('initial message', messages);
   const parsedFields = [
     'name',
     'phone',
@@ -48,6 +49,7 @@ const MessageEditorModal = ({
         return;
       }
       setMessages([...messages, trimmed]);
+      console.log('messages final', messages);
     }
 
     setInputMessage('');

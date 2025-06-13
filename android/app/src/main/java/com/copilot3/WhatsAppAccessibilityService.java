@@ -154,11 +154,17 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         // launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         // startActivity(launchIntent);
 
-        Intent intent = new Intent(Intent.ACTION_SENDTO);
-        intent.setData(Uri.parse("smsto:" + contact.phone));
-         intent.setPackage(selectedWhatsAppPackage);
-         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-         startActivity(intent);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setData(Uri.parse("whatsapp://send?phone=" + contact.phone.replace("+", "")));
+        intent.setPackage(selectedWhatsAppPackage);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Error launching WhatsApp chat", e);
+            currentContactIndex++;
+            handler.postDelayed(this::openNextContact, 2000);
+        }
 
         handler.postDelayed(() -> {
             if (contact.mediaPath != null && !contact.mediaPath.isEmpty()) {
@@ -196,11 +202,13 @@ public int onStartCommand(Intent intent, int flags, int startId) {
                     markContactSuccess(contact);
                     currentContactIndex++;
                     handler.postDelayed(this::openNextContact, 3000);
+                    return;
                 }
             }, 8000);
         } catch (Exception e) {
             Log.e(TAG, "Error sending media", e);
-            openNextContact();
+            currentContactIndex++;
+    handler.postDelayed(this::openNextContact, 2000);
         }
     }
 
@@ -208,21 +216,27 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         if (index >= contact.messages.size()) {
             markContactSuccess(contact);
             currentContactIndex++;
-            handler.postDelayed(this::openNextContact, 2000);
+            handler.postDelayed(this::openNextContact, 3000);
             return;
         }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
             Log.e(TAG, "Root window is null. Cannot send message.");
-            openNextContact();
+
+            currentContactIndex++;
+            handler.postDelayed(this::openNextContact, 3000);
             return;
         }
 
+
+        
+
         AccessibilityNodeInfo inputField = findNodeByViewId(root, selectedWhatsAppPackage + ":id/entry");
         if (inputField == null) {
-            // inputField = findNodeByViewId(root, "com.whatsapp.w4b:id/entry");
-           openNextContact();
+           // inputField = findNodeByViewId(root, "com.whatsapp.w4b:id/entry");
+             currentContactIndex++;
+        handler.postDelayed(this::openNextContact, 2000);
             return;
         }
 
@@ -243,7 +257,7 @@ public int onStartCommand(Intent intent, int flags, int startId) {
                 sendButton.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             }
 
-            handler.postDelayed(() -> sendMessagesSequentially(contact, index + 1),  randomDelay(3000, 6000));
+            handler.postDelayed(() -> sendMessagesSequentially(contact, index + 1),  randomDelay(1000, 6000));
         } else {
             Log.e(TAG, "Input field not found or not editable");
             openNextContact();

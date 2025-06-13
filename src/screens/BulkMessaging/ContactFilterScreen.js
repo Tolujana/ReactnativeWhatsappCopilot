@@ -40,7 +40,7 @@ const ContactFilterScreen = ({navigation, route}) => {
     setSelectedEditorContacts(contactsToEdit);
     setIsModalVisible(true);
   };
-
+  console.log('this is message', message);
   useEffect(() => {
     getContactsByCampaignId(campaign.id, loadedContacts => {
       setContacts(loadedContacts);
@@ -149,7 +149,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       const personalizedMessages = contactsToSend.map(contact => ({
         phone: contact.phone,
         message: replaceContactPlaceholders(
-          templateList[contact.id] || messages,
+          templateList[contact.id] || message,
           contact,
         ),
         name: contact.name,
@@ -162,7 +162,7 @@ const ContactFilterScreen = ({navigation, route}) => {
         totalContacts: personalizedMessages,
       });
 
-      launchWhatsappMessage(personalizedMessages, 'com.whatsapp.w4b');
+      launchWhatsappMessage(personalizedMessages, 'com.whatsapp');
     }
   };
   const renderContact1 = ({item}) => {
@@ -184,13 +184,17 @@ const ContactFilterScreen = ({navigation, route}) => {
       return <Text>Error rendering contact</Text>;
     }
   };
-  const saveEditedMessages = () => {
+  const saveEditedMessages = input => {
+    console.log(
+      'saveEditedMessages called with input:',
+      selectedEditorContacts,
+    );
     const updated = {...templateList};
     selectedEditorContacts.forEach(id => {
-      updated[id] = editingMessages;
+      updated[id] = input;
     });
     setTemplateList(updated);
-    setSelectedEditorContacts([]);
+
     setEditingMessages([]);
   };
 
@@ -276,6 +280,7 @@ const ContactFilterScreen = ({navigation, route}) => {
           handleSave={saveEditedMessages}
           campaign={campaign}
           initialMessages={editingMessages}
+          templateList={templateList}
         />
       )}
     </View>
