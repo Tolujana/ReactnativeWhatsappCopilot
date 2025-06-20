@@ -9,7 +9,12 @@ import {
   DeviceEventEmitter,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox'; // Or your preferred checkbox lib
-import {launchWhatsappMessage} from '../../util/WhatsappHelper'; // You'll create this helper
+import {
+  checkAccessibilityPermission,
+  checkOverlayPermission,
+  launchWhatsappMessage,
+  openOverlaySettings,
+} from '../../util/WhatsappHelper'; // You'll create this helper
 import {getContactsByCampaignId} from '../../util/database';
 import {NativeModules} from 'react-native';
 import useWhatsappReportListener from '../../util/UseWhatsappReporter';
@@ -27,7 +32,8 @@ const ContactFilterScreen = ({navigation, route}) => {
   const [editingMessages, setEditingMessages] = useState([]); // current messages sho
   const [isModalVisible, setIsModalVisible] = useState(false);
   const {AccessibilityHelper} = NativeModules;
-
+  const [needsHelp, setNeedsHelp] = useState(true);
+  const [whatsappPackage, setWhatsappPackage] = useState('com.whatsapp');
   const openSettings = () => {
     AccessibilityHelper.openAccessibilitySettings();
   };
@@ -53,12 +59,6 @@ const ContactFilterScreen = ({navigation, route}) => {
     });
   }, [campaign.id]);
 
-  const toggleSelect1 = contactId => {
-    setSelectedContacts(prev => ({
-      ...prev,
-      [contactId]: !prev[contactId],
-    }));
-  };
   const toggleSelect = useCallback(contactId => {
     if (!contactId) return;
 
@@ -73,117 +73,180 @@ const ContactFilterScreen = ({navigation, route}) => {
     }
   }, []);
 
-  console.log('template', templateList);
+  const handleSendMessagesold = async () => {
+    console.log('handleSendMessages called');
+    const contactsToSend = contacts.filter(
+      contact => selectedContacts[contact.id],
+    );
 
-  const checkAccessibilityPermission = async () => {
-    // Note the format: package name + '/' + full service class name with leading dot
-    const serviceId = 'com.copilot3/.WhatsAppAccessibilityService';
-    try {
-      const enabled = await AccessibilityHelper.isAccessibilityServiceEnabled(
-        serviceId,
-      );
-      return enabled;
-    } catch (e) {
-      console.warn('Failed to check accessibility permission', e);
+    if (contactsToSend.length === 0) {
+      Alert.alert('No Contacts', 'Please select at least one contact.');
+      return;
     }
-  };
 
-  const handleSendMessages = async () => {
-    const enabled = await checkAccessibilityPermission();
+    const personalizedMessages = contactsToSend.map(contact => ({
+      phone: contact.phone,
+      message: replaceContactPlaceholders(
+        templateList[contact.id] || message,
+        contact,
+      ),
+      name: contact.name,
+      mediaPath: contact.mediaPath,
+    }));
 
-    if (!enabled) {
-      Alert.alert(
-        'Permission Required',
-        'Accessibility permissions are needed to send WhatsApp messages. Please enable the Accessibility Service for this app.',
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {text: 'Go to Settings', onPress: openSettings},
-        ],
-        {cancelable: true},
-      );
-    } else {
-      const contactsToSend = contacts.filter(
-        contact => selectedContacts[contact.id],
-      );
-      console.log('this is the format', contactsToSend);
-      if (contactsToSend.length === 0) {
-        Alert.alert('No Contacts', 'Please select at least one contact.');
-        return;
+    if (needsHelp) {
+      const enabled = await checkAccessibilityPermission();
+      console.log('Accessibility enabled:', enabled);
+      if (!enabled) {
+        Alert.alert(
+          'Permission Required',
+          'To send messages automatically, please enable Accessibility for this app.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Go to Settings', onPress: openSettings},
+          ],
+        );
+        return; // ✅ prevent falling through
       }
 
-      function replaceContactPlaceholders(template, contact) {
-        const replacements = {
-          '{{name}}': contact.name || '',
-          '{{phone}}': contact.phone || '',
-        };
-
-        if (contact.extra_field) {
-          const extrafield = JSON.parse(contact.extra_field);
-          Object.keys(extrafield).forEach(key => {
-            replacements[`{{${key}}}`] = extrafield[key] || '';
-          });
-        }
-
-        const delimiter = '$@#__DELIMITER__#@%';
-        const joinedString = template.join(delimiter);
-
-        if (joinedString.length > 1000) {
-          Alert.alert(
-            'Error',
-            'Text is too long. Please reduce the message size.',
-          );
-          return template; // or return an empty array, depending on your requirements
-        }
-
-        let replacedString = joinedString;
-        Object.keys(replacements).forEach(placeholder => {
-          replacedString = replacedString.replaceAll(
-            placeholder,
-            replacements[placeholder],
-          );
-        });
-
-        return replacedString.split(delimiter).map(segment => segment.trim());
-      }
-
-      const personalizedMessages = contactsToSend.map(contact => ({
-        phone: contact.phone,
-        message: replaceContactPlaceholders(
-          templateList[contact.id] || message,
-          contact,
-        ),
-        name: contact.name,
-        mediaPath: contact.mediaPath, // supports per-contact mediaPath fallback
-      }));
-      console.log('this is persona', personalizedMessages);
-      // Assuming `launchWhatsappMessage` expects (array of {phone, message, mediaPath}, type)
-
+      launchWhatsappMessage(personalizedMessages, whatsappPackage);
       navigation.navigate('WhatsappResultScreen', {
         totalContacts: personalizedMessages,
       });
+      return;
+    }
 
-      launchWhatsappMessage(personalizedMessages, 'com.whatsapp');
-    }
+    Alert.alert(
+      'Manual Mode',
+      'You will have to tap "Send" manually in WhatsApp for each message.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Send Manually',
+          onPress: () => {
+            launchWhatsappMessage(personalizedMessages, whatsappPackage);
+            navigation.navigate('WhatsappResultScreen', {
+              totalContacts: personalizedMessages,
+            });
+          },
+        },
+      ],
+    );
   };
-  const renderContact1 = ({item}) => {
-    if (!item || !item.id) return null;
-    try {
-      return (
-        <View style={styles.contactItem}>
-          <CheckBox
-            value={!!selectedContacts[item.id]}
-            onValueChange={() => toggleSelect(item.id)}
-          />
-          <Text style={styles.contactText}>
-            {item.name} ({item.phone})
-          </Text>
-        </View>
+
+  const handleSendMessages = async () => {
+    const contactsToSend = contacts.filter(
+      contact => selectedContacts[contact.id],
+    );
+    console.log('Filtered contacts:', contactsToSend);
+
+    if (contactsToSend.length === 0) {
+      Alert.alert('No Contacts', 'Please select at least one contact.');
+      return;
+    }
+
+    function replaceContactPlaceholders(template, contact) {
+      const replacements = {
+        '{{name}}': contact.name || '',
+        '{{phone}}': contact.phone || '',
+      };
+
+      if (contact.extra_field) {
+        const extrafield = JSON.parse(contact.extra_field);
+        Object.keys(extrafield).forEach(key => {
+          replacements[`{{${key}}}`] = extrafield[key] || '';
+        });
+      }
+
+      const delimiter = '$@#__DELIMITER__#@%';
+      const joinedString = template.join(delimiter);
+
+      if (joinedString.length > 1000) {
+        Alert.alert(
+          'Error',
+          'Text is too long. Please reduce the message size.',
+        );
+        return template;
+      }
+
+      let replacedString = joinedString;
+      Object.keys(replacements).forEach(placeholder => {
+        replacedString = replacedString.replaceAll(
+          placeholder,
+          replacements[placeholder],
+        );
+      });
+
+      return replacedString.split(delimiter).map(segment => segment.trim());
+    }
+
+    const personalizedMessages = contactsToSend.map(contact => ({
+      phone: contact.phone,
+      message: replaceContactPlaceholders(
+        templateList[contact.id] || message,
+        contact,
+      ),
+      name: contact.name,
+      mediaPath: contact.mediaPath,
+    }));
+
+    console.log('Personalized messages:', personalizedMessages);
+
+    if (needsHelp) {
+      const enabled = await checkAccessibilityPermission();
+
+      if (!enabled) {
+        Alert.alert(
+          'Permission Required',
+          'This feature is intended for users with impairments or disabilities that make messaging difficult. If you are not using this app as an assistive tool, please use the overlay-based mode instead.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Go to Settings', onPress: openSettings},
+          ],
+          {cancelable: true},
+        );
+        return;
+      }
+      console.log('Accessibility permission granted');
+      launchWhatsappMessage(personalizedMessages, whatsappPackage);
+      navigation.navigate('WhatsappResultScreen', {
+        totalContacts: personalizedMessages,
+      });
+    } else {
+      const overlayGranted = await checkOverlayPermission();
+
+      if (!overlayGranted) {
+        Alert.alert(
+          'Overlay Permission Required',
+          'This feature requires overlay permission to show the floating button. Please enable it in your settings.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Go to Settings', onPress: openOverlaySettings},
+          ],
+          {cancelable: true},
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Manual Mode',
+        'You will have to tap "Send" manually every 3 seconds in WhatsApp for each message.',
+        [
+          {text: 'Cancel', style: 'cancel'},
+          {
+            text: 'Send Manually',
+            onPress: () => {
+              launchWhatsappMessage(personalizedMessages, whatsappPackage);
+              navigation.navigate('WhatsappResultScreen', {
+                totalContacts: personalizedMessages,
+              });
+            },
+          },
+        ],
       );
-    } catch (error) {
-      console.error('Render error for contact:', item, error);
-      return <Text>Error rendering contact</Text>;
     }
   };
+
   const saveEditedMessages = input => {
     console.log(
       'saveEditedMessages called with input:',
@@ -269,6 +332,53 @@ const ContactFilterScreen = ({navigation, route}) => {
         onPress={() => openEditorForContacts(Object.keys(selectedContacts))}>
         <Text style={styles.sendButtonText}>Edit selected Messages</Text>
       </TouchableOpacity>
+      <View style={{marginTop: 16}}>
+        <Text style={{fontWeight: 'bold', marginBottom: 4}}>
+          Select WhatsApp Type
+        </Text>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <TouchableOpacity
+            style={{
+              marginRight: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+            onPress={() => setWhatsappPackage('com.whatsapp')}>
+            <Checkbox
+              status={
+                whatsappPackage === 'com.whatsapp' ? 'checked' : 'unchecked'
+              }
+              onPress={() => setWhatsappPackage('com.whatsapp')}
+              color="#4F46E5"
+            />
+            <Text style={{marginLeft: 4}}>Normal WhatsApp</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{flexDirection: 'row', alignItems: 'center'}}
+            onPress={() => setWhatsappPackage('com.whatsapp.w4b')}>
+            <Checkbox
+              status={
+                whatsappPackage === 'com.whatsapp.w4b' ? 'checked' : 'unchecked'
+              }
+              onPress={() => setWhatsappPackage('com.whatsapp.w4b')}
+              color="#4F46E5"
+            />
+            <Text style={{marginLeft: 4}}>WhatsApp Business</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 16}}>
+        <Checkbox
+          status={needsHelp ? 'checked' : 'unchecked'}
+          onPress={() => setNeedsHelp(!needsHelp)}
+          color="#4F46E5"
+        />
+        <Text style={{marginLeft: 8, flexWrap: 'wrap'}}>
+          I need additional help to help tap "Send" in WhatsApp
+        </Text>
+      </View>
       <TouchableOpacity style={styles.sendButton} onPress={handleSendMessages}>
         <Text style={styles.sendButtonText}>Send Messages</Text>
       </TouchableOpacity>
