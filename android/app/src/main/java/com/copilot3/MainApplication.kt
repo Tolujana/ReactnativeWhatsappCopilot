@@ -2,7 +2,7 @@ package com.copilot3
 import com.copilot3.ServiceHelperPackage;
 import com.copilot3.AccessibilityPackage;
 import com.copilot3.ContactPickerPackage;
-import com.copilot3.WhatsappServicePackage;
+import com.copilot3.AppServicePackage;
 import android.app.Application
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
@@ -42,7 +42,7 @@ class MainApplication : Application(), ReactApplication {
               // Packages that cannot be autolinked yet can be added manually here, for example:
              add(AccessibilityPackage())
               add(ServiceHelperPackage())
-             add( WhatsappServicePackage());
+             add( AppServicePackage());
              add(ContactPickerPackage());
             }
 
