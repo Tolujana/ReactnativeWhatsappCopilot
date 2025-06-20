@@ -9,6 +9,7 @@ import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import android.accessibilityservice.AccessibilityServiceInfo
 import com.facebook.react.bridge.Promise
+import android.net.Uri
 
 @ReactModule(name = ServiceHelperModule.NAME)
 class ServiceHelperModule(private val reactContext: ReactApplicationContext) :
@@ -28,6 +29,26 @@ class ServiceHelperModule(private val reactContext: ReactApplicationContext) :
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         reactContext.startActivity(intent)
     }
+
+    @ReactMethod
+   fun openOverlaySettings() {
+    val intent = Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.parse("package:" + reactContext.packageName)
+    )
+    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    reactContext.startActivity(intent)
+}
+
+@ReactMethod
+fun isOverlayPermissionGranted(promise: Promise) {
+    try {
+        val granted = Settings.canDrawOverlays(reactContext)
+        promise.resolve(granted)
+    } catch (e: Exception) {
+        promise.reject("OVERLAY_PERMISSION_ERROR", e)
+    }
+}
 
     @ReactMethod
     fun isAccessibilityServiceEnabled2(serviceId: String, promise: Promise) {
