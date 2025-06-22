@@ -190,7 +190,7 @@ export const deleteContacts = (ids = [], callback) => {
   );
 };
 
-export const updateContact = (
+export const updateContact1 = (
   contactId,
   name,
   phone,
@@ -217,7 +217,94 @@ export const updateContact = (
   });
 };
 
-export const insertContact = (
+export const updateContact3 = (contactId, name, phone, extraFields) => {
+  const extraFieldString = JSON.stringify(extraFields || {});
+
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM contacts WHERE phone = ? AND id != ?`,
+        [phone, contactId],
+        (_, {rows}) => {
+          if (rows.length > 0) {
+            resolve({status: 'duplicate', phone});
+          } else {
+            tx.executeSql(
+              `UPDATE contacts 
+               SET name = ?, phone = ?, extra_field = ? 
+               WHERE id = ?`,
+              [name, phone, extraFieldString, contactId],
+              (_, result) => {
+                resolve({status: 'updated', rowsAffected: result.rowsAffected});
+              },
+              error => {
+                console.error('Update error:', error);
+                reject(error);
+              },
+            );
+          }
+        },
+        error => {
+          console.error('Duplicate check error:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};
+
+export const updateContact = (
+  contactId,
+  name,
+  phone,
+  extraFields,
+  checkForDuplicate = true,
+) => {
+  const extraFieldString = JSON.stringify(extraFields || {});
+
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      const updateQuery = () => {
+        tx.executeSql(
+          `UPDATE contacts 
+           SET name = ?, phone = ?, extra_field = ? 
+           WHERE id = ?`,
+          [name, phone, extraFieldString, contactId],
+          (_, result) => {
+            resolve({status: 'updated', rowsAffected: result.rowsAffected});
+          },
+          error => {
+            console.error('Update error:', error);
+            reject(error);
+          },
+        );
+      };
+
+      if (!checkForDuplicate) {
+        updateQuery();
+        return;
+      }
+
+      tx.executeSql(
+        `SELECT * FROM contacts WHERE phone = ? AND id != ?`,
+        [phone, contactId],
+        (_, {rows}) => {
+          if (rows.length > 0) {
+            resolve({status: 'duplicate', phone});
+          } else {
+            updateQuery();
+          }
+        },
+        error => {
+          console.error('Duplicate check error:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};
+
+export const insertContact1 = (
   campaignId,
   name,
   phone,
@@ -239,6 +326,40 @@ export const insertContact = (
         return true; // Required to signal the error
       },
     );
+  });
+};
+
+export const insertContact = (campaignId, name, phone, extraFields) => {
+  const extraFieldString = JSON.stringify(extraFields || {});
+
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM contacts WHERE campaign_id = ? AND phone = ?`,
+        [campaignId, phone],
+        (_, {rows}) => {
+          if (rows.length > 0) {
+            resolve({status: 'duplicate', phone});
+          } else {
+            tx.executeSql(
+              `INSERT INTO contacts (campaign_id, name, phone, extra_field) VALUES (?, ?, ?, ?)`,
+              [campaignId, name, phone, extraFieldString],
+              (_, result) => {
+                resolve({status: 'inserted', phone});
+              },
+              error => {
+                console.error('Insert error:', error);
+                reject(error);
+              },
+            );
+          }
+        },
+        error => {
+          console.error('Check duplicate error:', error);
+          reject(error);
+        },
+      );
+    });
   });
 };
 
