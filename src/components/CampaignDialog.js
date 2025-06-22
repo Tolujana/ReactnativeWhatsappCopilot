@@ -10,7 +10,7 @@ const CampaignDialog = ({visible, onDismiss, onSave}) => {
 
   const handleAddExtraField = () => {
     if (newExtraField.trim()) {
-      setExtraFields([...extraFields, newExtraField.trim()]);
+      setExtraFields([...extraFields, newExtraField.trim().toLowerCase()]);
       setNewExtraField('');
     }
   };
