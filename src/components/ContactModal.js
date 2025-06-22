@@ -13,12 +13,28 @@ export default function ContactModal({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [extraFields, setExtraFields] = useState({});
+  console.log('ContactModal rendered with initialData:', extraFieldsKeys);
 
   useEffect(() => {
     if (visible) {
       setName(initialData.name || '');
       setPhone(initialData.phone || '');
-      setExtraFields(initialData.extraFields || {});
+
+      // Parse `extra_field` if it exists and is a string
+      let parsedExtraFields = {};
+      if (typeof initialData.extra_field === 'string') {
+        try {
+          const parsed = JSON.parse(initialData.extra_field);
+          // Force all keys to lowercase
+          parsedExtraFields = Object.fromEntries(
+            Object.entries(parsed).map(([k, v]) => [k.toLowerCase(), v]),
+          );
+        } catch (e) {
+          console.warn('Invalid JSON in extra_field:', e);
+        }
+      }
+
+      setExtraFields(parsedExtraFields);
     }
   }, [visible, initialData]);
 
@@ -50,18 +66,22 @@ export default function ContactModal({
         style={styles.input}
       />
 
-      {extraFieldsKeys.map(field => (
-        <TextInput
-          key={field}
-          label={field}
-          value={extraFields[field] || ''}
-          onChangeText={text =>
-            setExtraFields(prev => ({...prev, [field]: text}))
-          }
-          mode="outlined"
-          style={styles.input}
-        />
-      ))}
+      {extraFieldsKeys.map(field => {
+        const key = field.toLowerCase();
+        return (
+          <TextInput
+            key={field}
+            label={field}
+            value={extraFields[key] || ''}
+            onChangeText={text =>
+              setExtraFields(prev => ({...prev, [key]: text}))
+            }
+            autoCapitalize="none"
+            mode="outlined"
+            style={styles.input}
+          />
+        );
+      })}
 
       <Button mode="contained" onPress={handleSave}>
         Save
