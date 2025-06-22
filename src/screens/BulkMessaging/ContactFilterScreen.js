@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   DeviceEventEmitter,
+  ScrollView,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox'; // Or your preferred checkbox lib
 import {
@@ -47,6 +48,7 @@ const ContactFilterScreen = ({navigation, route}) => {
     setIsModalVisible(true);
   };
   console.log('this is message', message);
+  console.log('selectedContacts', selectedContacts);
   useEffect(() => {
     getContactsByCampaignId(campaign.id, loadedContacts => {
       setContacts(loadedContacts);
@@ -247,6 +249,16 @@ const ContactFilterScreen = ({navigation, route}) => {
     }
   };
 
+  const areAllSelected =
+    contacts.length > 0 && contacts.every(c => selectedContacts[c.id]);
+  const toggleSelectAll = () => {
+    const updated = {};
+    contacts.forEach(contact => {
+      updated[contact.id] = !areAllSelected;
+    });
+    setSelectedContacts(updated);
+  };
+
   const saveEditedMessages = input => {
     console.log(
       'saveEditedMessages called with input:',
@@ -291,45 +303,74 @@ const ContactFilterScreen = ({navigation, route}) => {
     <View style={styles.container}>
       <Text style={styles.header}>Select Contacts</Text>
       {/* {MyDataTable(contacts, Object.keys(selectedContacts), toggleSelect)} */}
-
-      <DataTable>
-        <DataTable.Header style={styles.tableHeader}>
-          <DataTable.Title style={{flex: 0.5}}>✔</DataTable.Title>
-          <DataTable.Title style={{flex: 1}}>👤 Name</DataTable.Title>
-          <DataTable.Title style={{flex: 2}}>📱 Number</DataTable.Title>
-          <DataTable.Title style={{flex: 1.5}}>💬 edit Message</DataTable.Title>
-        </DataTable.Header>
-
-        {contacts.map(contact => {
-          const isChecked = !!selectedContacts[contact.id];
-          return (
-            <DataTable.Row
-              key={contact.id}
-              onPress={() => toggleSelect(contact.id)}
-              style={styles.row}>
-              <DataTable.Cell style={{flex: 0.5}}>
+      <ScrollView
+        style={{maxHeight: 400}}
+        contentContainerStyle={{paddingBottom: 10}}>
+        <DataTable>
+          <DataTable.Header style={styles.tableHeader}>
+            <DataTable.Title style={{flex: 0.5, justifyContent: 'center'}}>
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 4,
+                }}>
                 <Checkbox
-                  status={isChecked ? 'checked' : 'unchecked'}
-                  onPress={() => toggleSelect(contact.id)}
+                  status={areAllSelected ? 'checked' : 'unchecked'}
+                  onPress={toggleSelectAll}
                   color="#4F46E5"
+                  style={{transform: [{scaleX: 0.9}, {scaleY: 0.9}]}} // optional resize
                 />
-              </DataTable.Cell>
-              <DataTable.Cell style={{flex: 1}}>{contact.name}</DataTable.Cell>
-              <DataTable.Cell style={{flex: 2}}>{contact.phone}</DataTable.Cell>
-              <DataTable.Cell style={{flex: 1.5}}>
-                {' '}
-                <TouchableOpacity
-                  onPress={() => openEditorForContacts([contact])}>
-                  <Text style={{color: '#4F46E5'}}>✏️ EditMessage</Text>
-                </TouchableOpacity>
-              </DataTable.Cell>
-            </DataTable.Row>
-          );
-        })}
-      </DataTable>
+              </View>
+            </DataTable.Title>
+            <DataTable.Title style={{flex: 1}}>👤 Name</DataTable.Title>
+            <DataTable.Title style={{flex: 2}}>📱 Number</DataTable.Title>
+            <DataTable.Title style={{flex: 1.5}}>
+              💬 Edit Message
+            </DataTable.Title>
+          </DataTable.Header>
+
+          {contacts.map(contact => {
+            const isChecked = !!selectedContacts[contact.id];
+            return (
+              <DataTable.Row
+                key={contact.id}
+                onPress={() => toggleSelect(contact.id)}
+                style={styles.row}>
+                <DataTable.Cell style={{flex: 0.5}}>
+                  <Checkbox
+                    status={isChecked ? 'checked' : 'unchecked'}
+                    onPress={() => toggleSelect(contact.id)}
+                    color="#4F46E5"
+                  />
+                </DataTable.Cell>
+                <DataTable.Cell style={{flex: 1}}>
+                  {contact.name}
+                </DataTable.Cell>
+                <DataTable.Cell style={{flex: 2}}>
+                  {contact.phone}
+                </DataTable.Cell>
+                <DataTable.Cell style={{flex: 1.5}}>
+                  {' '}
+                  <TouchableOpacity
+                    onPress={() => openEditorForContacts([contact.id])}>
+                    <Text style={{color: '#4F46E5'}}>✏️ Edit</Text>
+                  </TouchableOpacity>
+                </DataTable.Cell>
+              </DataTable.Row>
+            );
+          })}
+        </DataTable>
+      </ScrollView>
       <TouchableOpacity
         style={styles.sendButton}
-        onPress={() => openEditorForContacts(Object.keys(selectedContacts))}>
+        onPress={() =>
+          openEditorForContacts(
+            Object.entries(selectedContacts)
+              .filter(([_, value]) => value === true)
+              .map(([key]) => key),
+          )
+        }>
         <Text style={styles.sendButtonText}>Edit selected Messages</Text>
       </TouchableOpacity>
       <View style={{marginTop: 16}}>
@@ -428,5 +469,11 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  tableHeader: {
+    backgroundColor: '#e0e0e0',
+    height: 56, // Increase from default (approx 48)
+    alignItems: 'center',
+    paddingVertical: 0,
   },
 });
