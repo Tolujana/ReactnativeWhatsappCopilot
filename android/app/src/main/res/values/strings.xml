@@ -1,6 +1,13 @@
 <resources>
     <string name="accessibility_service_description">
-        Copilot is a great tool for WordPress to send messages to multiple numbers.&#10;How does this work?&#10;One. Import or add contacts.&#10;Two. Send messages as needed.&#10;Three. Sit and relax while your phone does the sending for you.
+    Copilot helps users efficiently send messages to multiple contacts using selected messengers&#10;
+This feature is designed to assist individuals who may have difficulty performing repetitive tasks on their device.&#10;&#10;
+How it works:&#10;
+1. Add or import your contacts.&#10;
+2. Compose and schedule messages.&#10;
+3. Let the app handle the sending process.&#10;&#10;
+This service reduces manual steps and supports users with limited mobility or dexterity by automating message sending in a secure and user-controlled way.
+
     </string>
-    <string name="app_name">copilot3</string>
+    <string name="app_name">copilot</string>
 </resources>
