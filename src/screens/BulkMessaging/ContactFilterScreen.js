@@ -75,67 +75,6 @@ const ContactFilterScreen = ({navigation, route}) => {
     }
   }, []);
 
-  const handleSendMessagesold = async () => {
-    console.log('handleSendMessages called');
-    const contactsToSend = contacts.filter(
-      contact => selectedContacts[contact.id],
-    );
-
-    if (contactsToSend.length === 0) {
-      Alert.alert('No Contacts', 'Please select at least one contact.');
-      return;
-    }
-
-    const personalizedMessages = contactsToSend.map(contact => ({
-      phone: contact.phone,
-      message: replaceContactPlaceholders(
-        templateList[contact.id] || message,
-        contact,
-      ),
-      name: contact.name,
-      mediaPath: contact.mediaPath,
-    }));
-
-    if (needsHelp) {
-      const enabled = await checkAccessibilityPermission();
-      console.log('Accessibility enabled:', enabled);
-      if (!enabled) {
-        Alert.alert(
-          'Permission Required',
-          'To send messages automatically, please enable Accessibility for this app.',
-          [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Go to Settings', onPress: openSettings},
-          ],
-        );
-        return; // ✅ prevent falling through
-      }
-
-      launchWhatsappMessage(personalizedMessages, whatsappPackage);
-      navigation.navigate('WhatsappResultScreen', {
-        totalContacts: personalizedMessages,
-      });
-      return;
-    }
-
-    Alert.alert(
-      'Manual Mode',
-      'You will have to tap "Send" manually in WhatsApp for each message.',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Send Manually',
-          onPress: () => {
-            launchWhatsappMessage(personalizedMessages, whatsappPackage);
-            navigation.navigate('WhatsappResultScreen', {
-              totalContacts: personalizedMessages,
-            });
-          },
-        },
-      ],
-    );
-  };
-
   const handleSendMessages = async () => {
     const contactsToSend = contacts.filter(
       contact => selectedContacts[contact.id],
@@ -200,7 +139,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       if (!enabled) {
         Alert.alert(
           'Permission Required',
-          'This feature is intended for users with impairments or disabilities that make messaging difficult. If you are not using this app as an assistive tool, please use the overlay-based mode instead.',
+          'To use this assistive tool, Accessibility feature is required. kindly enable in settings.',
           [
             {text: 'Cancel', style: 'cancel'},
             {text: 'Go to Settings', onPress: openSettings},
@@ -232,7 +171,7 @@ const ContactFilterScreen = ({navigation, route}) => {
 
       Alert.alert(
         'Manual Mode',
-        'You will have to tap "Send" manually every 3 seconds in WhatsApp for each message.',
+        'You will have to tap "Send" button after message input.If you need assistance with this, kindly tick the checkbox above.',
         [
           {text: 'Cancel', style: 'cancel'},
           {
