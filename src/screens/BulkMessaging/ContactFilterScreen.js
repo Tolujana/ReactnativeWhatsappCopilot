@@ -33,7 +33,7 @@ const ContactFilterScreen = ({navigation, route}) => {
   const [editingMessages, setEditingMessages] = useState([]); // current messages sho
   const [isModalVisible, setIsModalVisible] = useState(false);
   const {AccessibilityHelper} = NativeModules;
-  const [needsHelp, setNeedsHelp] = useState(true);
+  const [needsHelp, setNeedsHelp] = useState(false);
   const [whatsappPackage, setWhatsappPackage] = useState('com.whatsapp');
   const openSettings = () => {
     AccessibilityHelper.openAccessibilitySettings();
@@ -52,7 +52,6 @@ const ContactFilterScreen = ({navigation, route}) => {
   useEffect(() => {
     getContactsByCampaignId(campaign.id, loadedContacts => {
       setContacts(loadedContacts);
-      console.log('contactFilter-Loadedcontact', loadedContacts);
       const selectedMap = {};
       loadedContacts.forEach(contact => {
         selectedMap[contact.id] = true;
@@ -159,7 +158,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       if (!overlayGranted) {
         Alert.alert(
           'Overlay Permission Required',
-          'This feature requires overlay permission to show the floating button. Please enable it in your settings.',
+          'This feature requires overlay permission to show the floating button and helps controls the message delivery. Please enable it in your settings.',
           [
             {text: 'Cancel', style: 'cancel'},
             {text: 'Go to Settings', onPress: openOverlaySettings},
@@ -356,11 +355,13 @@ const ContactFilterScreen = ({navigation, route}) => {
           color="#4F46E5"
         />
         <Text style={{marginLeft: 8, flexWrap: 'wrap'}}>
-          I need additional help to help tap "Send" in WhatsApp
+          I need additional help with sending messages (automated mode)
         </Text>
       </View>
       <TouchableOpacity style={styles.sendButton} onPress={handleSendMessages}>
-        <Text style={styles.sendButtonText}>Send Messages</Text>
+        <Text style={styles.sendButtonText}>
+          {needsHelp ? 'Send Messages' : 'Send Messages Manually'}
+        </Text>
       </TouchableOpacity>
       {isModalVisible && (
         <MessageEditorModal

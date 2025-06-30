@@ -8,7 +8,7 @@ const MyFab = ({handleAddContacts, setFabOpen, styling, campaign}) => {
   const handleContactSelect = () => {
     console.log('fab campagin', campaign);
     console.log('FAB was pressed');
-    navigation.navigate('ContactSelectScreen', {
+    navigation.navigate('Select Contact(s)', {
       onDone: handleAddContacts,
       campaign,
     });

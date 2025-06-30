@@ -1,3 +1,5 @@
+//clean this file and remove unused imports and functions and console logs
+
 import React, {useCallback, useEffect, useState} from 'react';
 import RNFS from 'react-native-fs';
 import {
@@ -117,45 +119,6 @@ export default function ContactSelectionScreen({route, campaignData}) {
     setModalVisible(true);
   };
 
-  const handleSaveContact = () => {
-    if (!name || !phone) {
-      Alert.alert('Missing Fields', 'Please enter both name and phone.');
-      return;
-    }
-    console.log('thisn to insert', campaign.id, name, phone, extraFields);
-    const invalidKeys = getInvalidExtraFields(
-      extraFields,
-      campaign.extraFields,
-    );
-
-    if (invalidKeys.length > 0) {
-      showInvalidFieldsAlert(invalidKeys, campaign.extraFields);
-      return;
-    }
-
-    if (isEditMode && editingContactId) {
-      updateContact(
-        editingContactId,
-        name,
-        phone,
-        extraFields,
-        isPhoneChanged,
-        () => {
-          setModalVisible(false);
-          resetForm();
-          fetchContacts(); // Refresh the list
-        },
-      );
-    } else {
-      insertContact(campaign.id, name, phone, extraFields, () => {
-        setModalVisible(false);
-        resetForm();
-        fetchContacts(); // Refresh the list
-        console.log('done');
-      });
-    }
-  };
-
   const requestContactsPermission = async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(
@@ -171,33 +134,6 @@ export default function ContactSelectionScreen({route, campaignData}) {
     return true;
   };
 
-  const handleModalSave1 = ({name, phone, extraFields}) => {
-    if (!name || !phone) {
-      Alert.alert('Missing Fields', 'Please enter both name and phone.');
-      return;
-    }
-
-    const invalidKeys = getInvalidExtraFields(
-      extraFields,
-      campaign.extraFields,
-    );
-    if (invalidKeys.length > 0) {
-      showInvalidFieldsAlert(invalidKeys, campaign.extraFields);
-      return;
-    }
-
-    if (isEditMode && editingContactId) {
-      updateContact(editingContactId, name, phone, extraFields, () => {
-        setModalVisible(false);
-        fetchContacts();
-      });
-    } else {
-      insertContact(campaign.id, name, phone, extraFields, () => {
-        setModalVisible(false);
-        fetchContacts();
-      });
-    }
-  };
   const handleModalSave = async ({name, phone, extraFields}) => {
     console.log('Saving contact:', {name, phone, extraFields});
     if (!name || !phone) {
@@ -258,29 +194,6 @@ export default function ContactSelectionScreen({route, campaignData}) {
     }
   };
 
-  const handleImportFromContacts = async () => {
-    const permission = await requestContactsPermission();
-    if (!permission) {
-      Alert.alert('Permission Denied', 'Cannot access contacts.');
-      return;
-    }
-    setContactSelectorModalVisible(true);
-  };
-
-  const handleAddContacts1 = async contactsToAdd => {
-    const insertions = contactsToAdd.map(c => {
-      if (c.fullName && c.number) {
-        return new Promise(resolve => {
-          insertContact(campaign.id, c.fullName, c.number, () => resolve());
-        });
-      }
-      return Promise.resolve();
-    });
-
-    await Promise.all(insertions);
-    fetchContacts(); // Refresh the contact list
-    setContactSelectorModalVisible(false);
-  };
   const handleAddContacts = async contactsToAdd => {
     const duplicatePhones = [];
 
@@ -310,175 +223,6 @@ export default function ContactSelectionScreen({route, campaignData}) {
       );
     } else {
       Alert.alert('Success', 'Contacts added successfully.');
-    }
-  };
-
-  // In your JSX
-
-  // const handleImportFromCSV1 = async () => {
-  //   try {
-  //     const [res] = await pick({type: ['text/csv']});
-  //     const content = await RNFS.readFile(res.uri, 'utf8');
-  //     const lines = content.split('\n').filter(line => line.trim() !== '');
-
-  //     lines.forEach(line => {
-  //       const parts = line.split(',').map(p => p.trim());
-  //       if (parts.length >= 2) {
-  //         const [csvName, csvPhone, ...extras] = parts;
-  //         const extraFields = {};
-  //         extras.forEach((val, idx) => {
-  //           extraFields[`field_${idx + 1}`] = val;
-  //         });
-  //         insertContact(
-  //           campaign.id,
-  //           csvName,
-  //           csvPhone,
-  //           extraFields,
-  //           fetchContacts,
-  //         );
-  //       }
-  //     });
-  //   } catch (err) {
-  //     if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
-  //       console.error('CSV Import Error:', err);
-  //     }
-  //   }
-  // };
-
-  const handleImportFromCSV1 = async () => {
-    try {
-      const [res] = await pick({
-        type: [
-          'text/csv',
-          'application/csv',
-          'text/comma-separated-values',
-          'application/vnd.ms-excel', // for .csv on some Androids
-          '*/*', // fallback
-        ],
-      });
-
-      const fileExtension = res.name.split('.').pop().toLowerCase();
-      if (fileExtension !== 'csv') {
-        Alert.alert('Invalid File', 'Please select a valid .csv file.');
-        return;
-      }
-
-      const content = await RNFS.readFile(res.uri, 'utf8');
-      const lines = content.split('\n').filter(line => line.trim() !== '');
-
-      const sanitizePhoneNumber = rawPhone => {
-        const cleaned = rawPhone.trim().replace(/[^\d+]/g, ''); // remove everything except digits and +
-        // Only keep the first + if it exists at the beginning
-        return cleaned.startsWith('+')
-          ? '+' + cleaned.slice(1).replace(/\+/g, '') // remove any extra +
-          : cleaned.replace(/\+/g, ''); // if no leading +, remove all +
-      };
-
-      lines.forEach(line => {
-        const parts = line.split(',').map(p => p.trim());
-        if (parts.length >= 2) {
-          const [csvName, csvPhone, ...extras] = parts;
-          const sanitizedPhone = sanitizePhoneNumber(csvPhone);
-
-          const extraFields = {};
-          extras.forEach((val, idx) => {
-            extraFields[`field_${idx + 1}`] = val;
-          });
-
-          insertContact(
-            campaign.id,
-            csvName,
-            sanitizedPhone,
-            extraFields,
-            fetchContacts,
-          );
-        }
-      });
-    } catch (err) {
-      if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
-        console.error('CSV Import Error:', err);
-        Alert.alert(
-          'Import Error',
-          'An error occurred while importing the CSV file.',
-        );
-      }
-    }
-  };
-  const handleImportFromCSV3 = async () => {
-    try {
-      const [res] = await pick({
-        type: [
-          'text/csv',
-          'application/csv',
-          'text/comma-separated-values',
-          'application/vnd.ms-excel',
-          '*/*',
-        ],
-      });
-
-      const fileExtension = res.name.split('.').pop().toLowerCase();
-      if (fileExtension !== 'csv') {
-        Alert.alert('Invalid File', 'Please select a valid .csv file.');
-        return;
-      }
-
-      const content = await RNFS.readFile(res.uri, 'utf8');
-      const lines = content.split('\n').filter(line => line.trim() !== '');
-
-      const sanitizePhoneNumber = rawPhone => {
-        const cleaned = rawPhone.trim().replace(/[^\d+]/g, '');
-        return cleaned.startsWith('+')
-          ? '+' + cleaned.slice(1).replace(/\+/g, '')
-          : cleaned.replace(/\+/g, '');
-      };
-
-      const duplicatePhones = [];
-
-      const insertions = lines.map(async line => {
-        const parts = line.split(',').map(p => p.trim());
-        if (parts.length >= 2) {
-          const [csvName, csvPhone, ...extras] = parts;
-          const sanitizedPhone = sanitizePhoneNumber(csvPhone);
-
-          const extraFields = {};
-          extras.forEach((val, idx) => {
-            extraFields[`field_${idx + 1}`] = val;
-          });
-
-          const result = await insertContact(
-            campaign.id,
-            csvName,
-            sanitizedPhone,
-            extraFields,
-          );
-
-          if (result.status === 'duplicate') {
-            duplicatePhones.push(sanitizedPhone);
-          }
-        }
-      });
-
-      await Promise.all(insertions);
-      fetchContacts();
-
-      if (duplicatePhones.length > 0) {
-        Alert.alert(
-          'Duplicate Contacts Skipped',
-          `The following numbers were already present and were not imported:\n\n${duplicatePhones.join(
-            '\n',
-          )}`,
-        );
-      } else {
-        Alert.alert('Success', 'Contacts imported successfully.');
-      }
-    } catch (err) {
-      if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
-        console.error('CSV Import Error:', err);
-        Alert.alert(
-          'Import Error',
-          'An error occurred while importing the CSV file.',
-        );
-      }
     }
   };
 
@@ -577,7 +321,6 @@ export default function ContactSelectionScreen({route, campaignData}) {
     }
   };
 
-  console.log('this is the campaing with extrafiled', campaign.extra_fields);
   return (
     <Provider>
       <View style={{flex: 1, padding: 1}}>

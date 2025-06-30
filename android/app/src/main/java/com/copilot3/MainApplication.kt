@@ -1,4 +1,5 @@
 package com.copilot3
+import com.copilot3.StatusModulePackage
 import com.copilot3.ServiceHelperPackage;
 import com.copilot3.AccessibilityPackage;
 import com.copilot3.ContactPickerPackage;
@@ -44,6 +45,7 @@ class MainApplication : Application(), ReactApplication {
               add(ServiceHelperPackage())
              add( AppServicePackage());
              add(ContactPickerPackage());
+             add(StatusModulePackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

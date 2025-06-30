@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {View, StyleSheet, ScrollView, Alert} from 'react-native';
 import {
   DataTable,
@@ -10,6 +10,7 @@ import {
   Portal,
 } from 'react-native-paper';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import Animated, {FadeInUp} from 'react-native-reanimated';
 import {
   getCampaigns,
   deleteCampaignById,
@@ -26,49 +27,43 @@ const CreateEditCampaignScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      // This runs every time the screen is focused (comes into view)
-      loadCampaigns(); // Your function to load updated contact data
+      loadCampaigns(); // Refresh when screen is focused
     }, []),
   );
 
   const loadCampaigns = async () => {
     getCampaigns(async campaignsList => {
-      const campaignsWithCounts = await Promise.all(
-        campaignsList.map(async campaign => {
-          return new Promise(resolve => {
-            getContactCountForCampaign(campaign.id, count => {
-              resolve({...campaign, contacts_count: count});
-            });
-          });
-        }),
+      const withCounts = await Promise.all(
+        campaignsList.map(
+          campaign =>
+            new Promise(resolve =>
+              getContactCountForCampaign(campaign.id, count =>
+                resolve({...campaign, contacts_count: count}),
+              ),
+            ),
+        ),
       );
-      setCampaigns(campaignsWithCounts);
+      setCampaigns(withCounts);
     });
   };
 
-  const handleCheckboxToggle = id => {
+  const toggleCheckbox = id => {
     setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id],
     );
-  };
-
-  const handleEdit = campaign => {
-    navigation.navigate('EditCampaignScreen', {campaign});
   };
 
   const handleDelete = () => {
     Alert.alert(
       'Delete Campaigns',
-      'Are you sure you want to delete the selected campaigns?',
+      'Are you sure you want to delete selected campaigns?',
       [
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            selectedIds.forEach(id => {
-              deleteCampaignById(id, () => {});
-            });
+            selectedIds.forEach(id => deleteCampaignById(id, () => {}));
             setSelectedIds([]);
             loadCampaigns();
           },
@@ -79,13 +74,11 @@ const CreateEditCampaignScreen = () => {
 
   const handleSaveCampaign = ({name, description, extraFields}) => {
     if (!name.trim()) return;
-
     insertCampaign(name, description, extraFields, insertedId => {
       if (!insertedId) {
         Alert.alert('Insert failed. Please try again.');
         return;
       }
-
       setShowDialog(false);
       loadCampaigns();
       navigation.navigate('ContactSelectionScreen2', {
@@ -96,9 +89,11 @@ const CreateEditCampaignScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📋 Your Campaigns</Text>
+      <Text variant="titleLarge" style={styles.title}>
+        📋 Your Campaigns
+      </Text>
 
-      <ScrollView contentContainerStyle={{alignItems: 'center'}}>
+      <ScrollView contentContainerStyle={{paddingBottom: 100}}>
         <DataTable style={styles.table}>
           <DataTable.Header style={styles.header}>
             <DataTable.Title style={{flex: 1}}>Select</DataTable.Title>
@@ -109,28 +104,38 @@ const CreateEditCampaignScreen = () => {
             <DataTable.Title style={{flex: 1}}>Edit</DataTable.Title>
           </DataTable.Header>
 
-          {campaigns.map(campaign => (
-            <DataTable.Row key={campaign.id} style={styles.row}>
-              <DataTable.Cell style={{flex: 1}}>
-                <Checkbox
-                  status={
-                    selectedIds.includes(campaign.id) ? 'checked' : 'unchecked'
-                  }
-                  onPress={() => handleCheckboxToggle(campaign.id)}
-                />
-              </DataTable.Cell>
-              <DataTable.Cell style={{flex: 3}}>{campaign.name}</DataTable.Cell>
-              <DataTable.Cell numeric style={{flex: 2}}>
-                {campaign.contacts_count || 0}
-              </DataTable.Cell>
-              <DataTable.Cell style={{flex: 1}}>
-                <IconButton
-                  icon="pencil"
-                  size={20}
-                  onPress={() => handleEdit(campaign)}
-                />
-              </DataTable.Cell>
-            </DataTable.Row>
+          {campaigns.map((campaign, index) => (
+            <Animated.View
+              key={campaign.id}
+              entering={FadeInUp.delay(index * 60)}>
+              <DataTable.Row style={styles.row}>
+                <DataTable.Cell style={{flex: 1}}>
+                  <Checkbox
+                    status={
+                      selectedIds.includes(campaign.id)
+                        ? 'checked'
+                        : 'unchecked'
+                    }
+                    onPress={() => toggleCheckbox(campaign.id)}
+                  />
+                </DataTable.Cell>
+                <DataTable.Cell style={{flex: 3}}>
+                  {campaign.name}
+                </DataTable.Cell>
+                <DataTable.Cell numeric style={{flex: 2}}>
+                  {campaign.contacts_count || 0}
+                </DataTable.Cell>
+                <DataTable.Cell style={{flex: 1}}>
+                  <IconButton
+                    icon="pencil"
+                    size={20}
+                    onPress={() =>
+                      navigation.navigate('EditCampaignScreen', {campaign})
+                    }
+                  />
+                </DataTable.Cell>
+              </DataTable.Row>
+            </Animated.View>
           ))}
         </DataTable>
       </ScrollView>
@@ -166,9 +171,11 @@ const CreateEditCampaignScreen = () => {
 export default CreateEditCampaignScreen;
 
 const styles = StyleSheet.create({
-  container: {flex: 1, padding: 16},
+  container: {
+    flex: 1,
+    padding: 16,
+  },
   title: {
-    fontSize: 20,
     marginBottom: 12,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -177,12 +184,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     borderColor: '#ccc',
-    backgroundColor: '#fafafa',
-    overflow: 'hidden',
+    backgroundColor: '#fff',
   },
-  header: {backgroundColor: '#e0e0e0'},
-  row: {borderBottomWidth: 1, borderColor: '#eee'},
-  fab: {position: 'absolute', right: 16, bottom: 30},
+  header: {
+    backgroundColor: '#f0f0f0',
+  },
+  row: {
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 30,
+  },
   deleteBtn: {
     position: 'absolute',
     left: 16,
@@ -190,3 +205,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#d32f2f',
   },
 });
+// CampaignDialog.js

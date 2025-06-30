@@ -97,7 +97,7 @@ const BulkMessagingScreen = ({navigation, route}) => {
       return;
     }
 
-    navigation.navigate('ContactFilterScreen', {
+    navigation.navigate('Contact Selection', {
       message: messages,
       media,
       campaign,
@@ -176,7 +176,7 @@ const BulkMessagingScreen = ({navigation, route}) => {
       )}
 
       <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-        <Text style={styles.sendButtonText}>Send Message</Text>
+        <Text style={styles.sendButtonText}>Next</Text>
       </TouchableOpacity>
     </View>
   );

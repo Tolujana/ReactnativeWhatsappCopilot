@@ -1,19 +1,14 @@
-import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-} from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import React from 'react';
+import {ScrollView, StyleSheet, View, useWindowDimensions} from 'react-native';
+import {Text, Surface, useTheme, IconButton} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import CategorySection from './CategorySection';
+import Animated, {FadeInDown} from 'react-native-reanimated';
+import {useNavigation} from '@react-navigation/native';
 
 const MENU_ITEMS = {
   'Bulk Messaging': [
     {
-      title: 'Msg unSaved contacts',
+      title: 'Msg unsaved contacts',
       icon: 'account-question',
       screen: 'SendMessageToNonContact',
     },
@@ -25,47 +20,89 @@ const MENU_ITEMS = {
     {
       title: 'Send bulk messages',
       icon: 'send',
-      screen: 'CampaignSelectionScreen',
+      screen: 'Campaign Selection',
     },
-    {title: 'Message history', icon: 'history', screen: 'StatusSaver'},
-    {title: 'Settings', icon: 'cog', screen: 'StatusSaver'},
+    {title: 'Message history', icon: 'history', screen: 'MessageHistory'},
+    {title: 'Settings', icon: 'cog', screen: 'SettingsScreen'},
   ],
   'Status Saver': [
-    {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaver'},
     {title: 'Save status', icon: 'download', screen: 'StatusSaver'},
+    {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaverSettings'},
   ],
   'Contact Extractor': [
-    {title: 'Group extractor', icon: 'account-group', screen: 'StatusSaver'},
+    {title: 'Group extractor', icon: 'account-group', screen: 'GroupExtractor'},
     {
       title: 'Unsaved contact extractor',
       icon: 'account-off',
-      screen: 'StatusSaver',
+      screen: 'UnsavedContactExtractor',
     },
   ],
   'Retrieve Deleted Messages': [
     {
       title: 'Retrieve messages',
       icon: 'message-reply-text',
-      screen: 'StatusSaver',
+      screen: 'RetrieveMessages',
     },
-    {title: 'Retrieve media', icon: 'image-search', screen: 'StatusSaver'},
+    {title: 'Retrieve media', icon: 'image-search', screen: 'RetrieveMedia'},
   ],
 };
 
-const MenuCard = ({title, iconName, onPress}) => (
-  <TouchableOpacity onPress={onPress} style={styles.menuCard}>
-    <View style={styles.menuCardIconContainer}>
-      <Icon name={iconName} size={30} color="#4B5563" />
+const MenuCard = ({title, icon, screen, cardWidth}) => {
+  const navigation = useNavigation();
+  const theme = useTheme();
+
+  return (
+    <Animated.View entering={FadeInDown.springify()} style={{width: cardWidth}}>
+      <Surface
+        style={[
+          styles.menuCard,
+          {backgroundColor: theme.colors.elevation.level1},
+        ]}
+        elevation={2}
+        onTouchEnd={() => navigation.navigate(screen)}>
+        <Icon name={icon} size={30} color={theme.colors.primary} />
+        <Text style={styles.menuCardText}>{title}</Text>
+      </Surface>
+    </Animated.View>
+  );
+};
+
+const CategorySection = ({title, items, cardWidth}) => (
+  <View style={styles.categorySection}>
+    <Text style={styles.categorySectionTitle}>{title}</Text>
+    <View style={styles.categorySectionItems}>
+      {items.map((item, index) => (
+        <MenuCard
+          key={index}
+          title={item.title}
+          icon={item.icon}
+          screen={item.screen}
+          cardWidth={cardWidth}
+        />
+      ))}
     </View>
-    <Text style={styles.menuCardText}>{title}</Text>
-  </TouchableOpacity>
+  </View>
 );
 
-export default function Home() {
+export default function Home({toggleTheme}) {
+  const {width} = useWindowDimensions();
+  const cardWidth = (width - 48) / 3; // 3 items per row with spacing
+  const theme = useTheme();
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      <View style={styles.themeToggle}>
+        <IconButton icon="theme-light-dark" onPress={toggleTheme} />
+      </View>
+
       {Object.entries(MENU_ITEMS).map(([category, items], index) => (
-        <CategorySection key={index} title={category} items={items} />
+        <CategorySection
+          key={index}
+          title={category}
+          items={items}
+          cardWidth={cardWidth}
+        />
       ))}
     </ScrollView>
   );
@@ -73,50 +110,38 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F9FAFB',
-    padding: 8,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 8,
   },
-  menuCard: {
-    alignItems: 'center',
-    padding: 8,
-    margin: 4,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    width: '22%',
-  },
-  menuCardIconContainer: {
-    marginBottom: 4,
-  },
-  menuCardText: {
-    fontSize: 12,
-    textAlign: 'center',
+  themeToggle: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
   categorySection: {
-    marginBottom: 16,
-  },
-  categorySectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 24,
   },
   categorySectionTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   categorySectionItems: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 8,
+    gap: 12,
+  },
+  menuCard: {
+    aspectRatio: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+  },
+  menuCardText: {
+    marginTop: 8,
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

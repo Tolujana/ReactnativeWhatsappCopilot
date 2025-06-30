@@ -6,12 +6,12 @@ const CampaignDialog = ({visible, onDismiss, onSave}) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [extraFields, setExtraFields] = useState([]);
-  const [newExtraField, setNewExtraField] = useState('');
+  const [newField, setNewField] = useState('');
 
   const handleAddExtraField = () => {
-    if (newExtraField.trim()) {
-      setExtraFields([...extraFields, newExtraField.trim().toLowerCase()]);
-      setNewExtraField('');
+    if (newField.trim()) {
+      setExtraFields([...extraFields, newField.trim().toLowerCase()]);
+      setNewField('');
     }
   };
 
@@ -20,7 +20,7 @@ const CampaignDialog = ({visible, onDismiss, onSave}) => {
     setName('');
     setDescription('');
     setExtraFields([]);
-    setNewExtraField('');
+    setNewField('');
   };
 
   return (
@@ -45,20 +45,18 @@ const CampaignDialog = ({visible, onDismiss, onSave}) => {
         />
         <View style={{marginBottom: 10}}>
           <Text variant="titleMedium" style={{marginBottom: 6}}>
-            Add other fields like age, sex etc
+            Optional Fields (e.g. Age, Location)
           </Text>
           {extraFields.map((field, index) => (
-            <Text key={index} style={{marginLeft: 6}}>
-              ✔️ {field}
-            </Text>
+            <Text key={index}>✔️ {field}</Text>
           ))}
         </View>
 
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
           <TextInput
-            label="Add Extra Field"
-            value={newExtraField}
-            onChangeText={setNewExtraField}
+            label="Add Field"
+            value={newField}
+            onChangeText={setNewField}
             mode="outlined"
             style={{flex: 1}}
           />

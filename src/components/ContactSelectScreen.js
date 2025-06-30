@@ -140,22 +140,6 @@ export default function ContactSelectScreen({navigation, route}) {
       .filter(Boolean)
       .flat(); // Flatten array of arrays
 
-    // Insert into database before navigating back
-    // const insertions = selectedContacts.map(c => {
-    //   if (c.fullName && c.number) {
-    //     return new Promise(resolve => {
-    //       insertContact(
-    //         route.params.campaign.id,
-    //         c.fullName,
-    //         c.number,
-    //         [],
-    //         () => resolve(),
-    //       );
-    //     });
-    //   }
-    //   return Promise.resolve();
-    // });
-
     const insertions = selectedContacts.map(c => {
       if (c.fullName && c.number) {
         return new Promise(resolve => {
@@ -276,9 +260,6 @@ export default function ContactSelectScreen({navigation, route}) {
         />
       )}
 
-      <Button mode="contained" onPress={openPicker} style={styles.doneBtn}>
-        Done2
-      </Button>
       <Button mode="contained" onPress={handleDone} style={styles.doneBtn}>
         Done
       </Button>

@@ -131,7 +131,10 @@ const MessageEditorModal = ({
 
         <TouchableOpacity
           style={styles.sendButton}
-          onPress={() => handleSave(messages)}>
+          onPress={() => {
+            handleSave(messages);
+            setIsModalVisible(false);
+          }}>
           <Text style={styles.sendButtonText}>Save</Text>
         </TouchableOpacity>
 

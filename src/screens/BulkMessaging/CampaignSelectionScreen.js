@@ -11,7 +11,6 @@ import {getCampaigns} from '../../util/database';
 //import {getAllCampaigns} from '../../database/database'; // Adjust path as needed
 
 const CampaignSelectionScreen = ({navigation, route}) => {
-  const {message, media} = route.params;
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
 
@@ -29,8 +28,6 @@ const CampaignSelectionScreen = ({navigation, route}) => {
 
     navigation.navigate('BulkMessaging', {
       campaign: selectedCampaign,
-      message,
-      media,
     });
   };
 
