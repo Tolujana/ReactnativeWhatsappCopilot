@@ -28,6 +28,7 @@ const CampaignSelectionScreen = ({navigation, route}) => {
 
     navigation.navigate('BulkMessaging', {
       campaign: selectedCampaign,
+      prefillMessages: route.params?.prefillMessages || [],
     });
   };
 

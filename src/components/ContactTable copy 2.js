@@ -7,7 +7,6 @@ import {
   Text,
   Dimensions,
   TextInput,
-  TouchableOpacity,
 } from 'react-native';
 import {
   DataTable,
@@ -19,7 +18,11 @@ import {
   Modal,
   Portal,
 } from 'react-native-paper';
-import {deleteContacts, updateContact} from '../util/database';
+import {
+  deleteContacts,
+  updateContact,
+  updateContactInDB,
+} from '../util/database';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -38,7 +41,7 @@ export default function ContactTable({
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editableData, setEditableData] = useState([]);
-  const [focusedField, setFocusedField] = useState(null);
+  const [focusedField, setFocusedField] = useState(null); // rowId_fieldName
 
   useEffect(() => {
     if (Array.isArray(contacts)) {
@@ -87,7 +90,7 @@ export default function ContactTable({
           contact.name,
           contact.phone,
           contact.extra_field || {},
-          true,
+          true, // or false if you want to skip duplicate check
         );
       }
       fetchContacts();
@@ -97,6 +100,7 @@ export default function ContactTable({
 
   return (
     <View style={{flex: 1}}>
+      {/* Modal for toggling field visibility */}
       <Portal>
         <Modal
           visible={showFieldSelector}
@@ -175,30 +179,14 @@ export default function ContactTable({
               {editableData.map((item, index) => {
                 const isInvalid = invalidIds.includes(item.id);
                 const isChecked = selectedContacts[item.id];
-                const rowStyle = isEditing ? styles.editingRow : null;
-
-                const renderInput = (value, onChange, fieldKey) => (
-                  <TextInput
-                    value={value}
-                    multiline
-                    numberOfLines={
-                      focusedField === `${item.id}-${fieldKey}` ? 5 : 1
-                    }
-                    onFocus={() => setFocusedField(`${item.id}-${fieldKey}`)}
-                    onBlur={() => setFocusedField(null)}
-                    onChangeText={onChange}
-                    style={[
-                      styles.textInput,
-                      focusedField === `${item.id}-${fieldKey}` &&
-                        styles.expandedInput,
-                    ]}
-                  />
-                );
 
                 return (
                   <DataTable.Row
                     key={item.id}
-                    style={[isInvalid ? styles.invalidRow : null, rowStyle]}>
+                    style={[
+                      isInvalid ? styles.invalidRow : null,
+                      isEditing ? styles.editingRow : null,
+                    ]}>
                     <DataTable.Cell style={{flex: 0.5}}>
                       <Checkbox
                         status={isChecked ? 'checked' : 'unchecked'}
@@ -207,48 +195,53 @@ export default function ContactTable({
                     </DataTable.Cell>
 
                     <DataTable.Cell style={{flex: 1}}>
-                      {isEditing
-                        ? renderInput(
-                            item.name,
-                            text => {
-                              const updated = [...editableData];
-                              updated[index].name = text;
-                              setEditableData(updated);
-                            },
-                            'name',
-                          )
-                        : item.name}
+                      {isEditing ? (
+                        <TextInput
+                          value={item.name}
+                          onChangeText={text => {
+                            const updated = [...editableData];
+                            updated[index].name = text;
+                            setEditableData(updated);
+                          }}
+                        />
+                      ) : (
+                        item.name
+                      )}
                     </DataTable.Cell>
 
                     <DataTable.Cell style={{flex: 2.5}}>
-                      {isEditing
-                        ? renderInput(
-                            item.phone,
-                            text => {
-                              const updated = [...editableData];
-                              updated[index].phone = text;
-                              setEditableData(updated);
-                            },
-                            'phone',
-                          )
-                        : item.phone}
+                      {isEditing ? (
+                        <TextInput
+                          value={item.phone}
+                          keyboardType="phone-pad"
+                          onChangeText={text => {
+                            const updated = [...editableData];
+                            updated[index].phone = text;
+                            setEditableData(updated);
+                          }}
+                        />
+                      ) : (
+                        item.phone
+                      )}
                     </DataTable.Cell>
 
                     {visibleFields.map(field => (
                       <DataTable.Cell key={field}>
-                        {isEditing
-                          ? renderInput(
-                              item.extra_field?.[field.toLowerCase()] || '',
-                              text => {
-                                const updated = [...editableData];
-                                updated[index].extra_field[
-                                  field.toLowerCase()
-                                ] = text;
-                                setEditableData(updated);
-                              },
-                              field.toLowerCase(),
-                            )
-                          : item.extra_field?.[field.toLowerCase()] || ''}
+                        {isEditing ? (
+                          <TextInput
+                            value={
+                              item.extra_field?.[field.toLowerCase()] || ''
+                            }
+                            onChangeText={text => {
+                              const updated = [...editableData];
+                              updated[index].extra_field[field.toLowerCase()] =
+                                text;
+                              setEditableData(updated);
+                            }}
+                          />
+                        ) : (
+                          item.extra_field?.[field.toLowerCase()] || ''
+                        )}
                       </DataTable.Cell>
                     ))}
 
@@ -299,9 +292,6 @@ const styles = StyleSheet.create({
   invalidRow: {
     backgroundColor: '#ffe5e5',
   },
-  editingRow: {
-    backgroundColor: '#fff8dc',
-  },
   warningText: {
     color: '#b00020',
     fontWeight: 'bold',
@@ -335,17 +325,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  textInput: {
-    backgroundColor: 'white',
-    padding: 4,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 4,
-  },
-  expandedInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
   },
 });

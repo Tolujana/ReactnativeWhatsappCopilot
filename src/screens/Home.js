@@ -22,34 +22,29 @@ const MENU_ITEMS = {
       icon: 'send',
       screen: 'Campaign Selection',
     },
-    {title: 'Message history', icon: 'history', screen: 'MessageHistory'},
+    {title: 'Message history', icon: 'history', screen: 'MessageReport'},
     {title: 'Settings', icon: 'cog', screen: 'SettingsScreen'},
   ],
   'Status Saver': [
     {title: 'Save status', icon: 'download', screen: 'StatusSaver'},
-    {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaverSettings'},
+    {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaver Settings'},
   ],
-  'Contact Extractor': [
-    {title: 'Group extractor', icon: 'account-group', screen: 'GroupExtractor'},
+  'Messenger Cleanup': [
+    {title: 'Clean up', icon: 'bin', screen: 'Messenger Cleanup'},
     {
-      title: 'Unsaved contact extractor',
-      icon: 'account-off',
-      screen: 'UnsavedContactExtractor',
+      title: 'Settings',
+      icon: 'cog-outline',
+      screen: 'MessangerCleanup Settings',
     },
-  ],
-  'Retrieve Deleted Messages': [
-    {
-      title: 'Retrieve messages',
-      icon: 'message-reply-text',
-      screen: 'RetrieveMessages',
-    },
-    {title: 'Retrieve media', icon: 'image-search', screen: 'RetrieveMedia'},
   ],
 };
 
 const MenuCard = ({title, icon, screen, cardWidth}) => {
   const navigation = useNavigation();
   const theme = useTheme();
+  const handlePress = () => {
+    navigation.navigate(screen);
+  };
 
   return (
     <Animated.View entering={FadeInDown.springify()} style={{width: cardWidth}}>

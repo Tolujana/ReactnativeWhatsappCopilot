@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <Button
+        android:id="@+id/pick_folder_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pick Android/media Folder" />
+
+    <Spinner
+        android:id="@+id/app_spinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" />
+
+    <GridView
+        android:id="@+id/media_grid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:numColumns="3"
+        android:verticalSpacing="6dp"
+        android:horizontalSpacing="6dp"
+        android:stretchMode="columnWidth"
+        android:gravity="center" />
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:weightSum="2">
+
+        <Button
+            android:id="@+id/save_btn"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="✅ Save"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/use_status_btn"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="📥 Use as Status"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+</LinearLayout>

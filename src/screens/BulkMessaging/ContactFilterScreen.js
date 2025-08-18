@@ -16,7 +16,7 @@ import {
   launchWhatsappMessage,
   openOverlaySettings,
 } from '../../util/WhatsappHelper'; // You'll create this helper
-import {getContactsByCampaignId} from '../../util/database';
+import {getContactsByCampaignId, insertSentMessage} from '../../util/database';
 import {NativeModules} from 'react-native';
 import useWhatsappReportListener from '../../util/UseWhatsappReporter';
 import {Checkbox, DataTable} from 'react-native-paper';
@@ -25,6 +25,7 @@ import MessageEditorModal from '../../components/MessageEditor';
 
 const ContactFilterScreen = ({navigation, route}) => {
   const {campaign, message, media} = route.params;
+  const [isSending, setIsSending] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState({});
   const [messages, setMessages] = useState([]); // default/global message array
@@ -74,7 +75,7 @@ const ContactFilterScreen = ({navigation, route}) => {
     }
   }, []);
 
-  const handleSendMessages = async () => {
+  const handleSendMessages1 = async () => {
     const contactsToSend = contacts.filter(
       contact => selectedContacts[contact.id],
     );
@@ -84,6 +85,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       Alert.alert('No Contacts', 'Please select at least one contact.');
       return;
     }
+    insertSentMessage([{message}], new Date().toISOString());
 
     function replaceContactPlaceholders(template, contact) {
       const replacements = {
@@ -151,6 +153,7 @@ const ContactFilterScreen = ({navigation, route}) => {
       launchWhatsappMessage(personalizedMessages, whatsappPackage);
       navigation.navigate('WhatsappResultScreen', {
         totalContacts: personalizedMessages,
+        whatsappPackage,
       });
     } else {
       const overlayGranted = await checkOverlayPermission();
@@ -180,6 +183,130 @@ const ContactFilterScreen = ({navigation, route}) => {
               navigation.navigate('WhatsappResultScreen', {
                 totalContacts: personalizedMessages,
               });
+            },
+          },
+        ],
+      );
+    }
+  };
+  const handleSendMessages = async () => {
+    if (isSending) return;
+    setIsSending(true);
+
+    const contactsToSend = contacts.filter(
+      contact => selectedContacts[contact.id],
+    );
+    console.log('Filtered contacts:', contactsToSend);
+
+    if (contactsToSend.length === 0) {
+      Alert.alert('No Contacts', 'Please select at least one contact.');
+      setIsSending(false);
+      return;
+    }
+
+    // ✅ Save the raw message draft once before any replacement
+    insertSentMessage([{message}], new Date().toISOString());
+
+    function replaceContactPlaceholders(template, contact) {
+      const replacements = {
+        '{{name}}': contact.name || '',
+        '{{phone}}': contact.phone || '',
+      };
+
+      if (contact.extra_field) {
+        const extrafield = JSON.parse(contact.extra_field);
+        Object.keys(extrafield).forEach(key => {
+          replacements[`{{${key}}}`] = extrafield[key] || '';
+        });
+      }
+
+      const delimiter = '$@#__DELIMITER__#@%';
+      const joinedString = template.join(delimiter);
+
+      if (joinedString.length > 1000) {
+        Alert.alert(
+          'Error',
+          'Text is too long. Please reduce the message size.',
+        );
+        setIsSending(false);
+        return template;
+      }
+
+      let replacedString = joinedString;
+      Object.keys(replacements).forEach(placeholder => {
+        replacedString = replacedString.replaceAll(
+          placeholder,
+          replacements[placeholder],
+        );
+      });
+
+      return replacedString.split(delimiter).map(segment => segment.trim());
+    }
+
+    const personalizedMessages = contactsToSend.map(contact => ({
+      phone: contact.phone,
+      message: replaceContactPlaceholders(
+        templateList[contact.id] || message,
+        contact,
+      ),
+      name: contact.name,
+      mediaPath: contact.mediaPath,
+    }));
+
+    console.log('Personalized messages:', personalizedMessages);
+
+    const goToResultScreen = () =>
+      navigation.navigate('WhatsappResultScreen', {
+        totalContacts: personalizedMessages,
+        whatsappPackage,
+      });
+
+    if (needsHelp) {
+      const enabled = await checkAccessibilityPermission();
+      if (!enabled) {
+        Alert.alert(
+          'Permission Required',
+          'To use this assistive tool, Accessibility feature is required. Kindly enable in settings.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Go to Settings', onPress: openSettings},
+          ],
+          {cancelable: true},
+        );
+        setIsSending(false);
+        return;
+      }
+
+      launchWhatsappMessage(personalizedMessages, whatsappPackage);
+      goToResultScreen();
+      setIsSending(false);
+    } else {
+      const overlayGranted = await checkOverlayPermission();
+      if (!overlayGranted) {
+        Alert.alert(
+          'Overlay Permission Required',
+          'This feature requires overlay permission to show the floating button and control message delivery. Enable it in settings.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Go to Settings', onPress: openOverlaySettings},
+          ],
+          {cancelable: true},
+        );
+        setIsSending(false);
+        return;
+      }
+
+      Alert.alert(
+        'Manual Mode',
+        'You will have to tap "Send" manually for each message. Tick the checkbox above to get help.',
+        [
+          {text: 'Cancel', style: 'cancel', onPress: () => setIsSending(false)},
+          {
+            text: 'Send Manually',
+            onPress: () => {
+              launchWhatsappMessage(personalizedMessages, whatsappPackage);
+              goToResultScreen();
+              setIsSending(false);
             },
           },
         ],

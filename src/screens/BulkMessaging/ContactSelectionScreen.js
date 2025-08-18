@@ -226,7 +226,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
     }
   };
 
-  const handleImportFromCSV = async () => {
+  const handleImportFromCSV2 = async () => {
     try {
       const [res] = await pick({
         type: [
@@ -316,6 +316,106 @@ export default function ContactSelectionScreen({route, campaignData}) {
         Alert.alert(
           'Import Error',
           'An error occurred while importing the CSV file.',
+        );
+      }
+    }
+  };
+
+  const handleImportFromCSV = async () => {
+    try {
+      const [res] = await pick({
+        type: [
+          'text/csv',
+          'application/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          '*/*',
+        ],
+      });
+
+      const fileExtension = res.name.split('.').pop().toLowerCase();
+      if (fileExtension !== 'csv') {
+        Alert.alert('Invalid File', 'Please select a valid .csv file.');
+        return;
+      }
+
+      const content = await RNFS.readFile(res.uri, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+
+      if (lines.length < 2) {
+        Alert.alert(
+          'CSV Error',
+          'The CSV file must contain headers and at least one data row.',
+        );
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const duplicatePhones = [];
+
+      const sanitizePhone = raw => {
+        const cleaned = raw.trim().replace(/[^\d+]/g, '');
+        return raw.trim().startsWith('+')
+          ? '+' + cleaned.replace(/\+/g, '')
+          : cleaned.replace(/\+/g, '');
+      };
+
+      const insertions = lines.slice(1).map(async (line, index) => {
+        const parts = line.split(',').map(p => p.trim());
+
+        if (parts.length >= 2) {
+          const record = Object.fromEntries(
+            headers.map((key, i) => [key, parts[i] || '']),
+          );
+
+          const name = record.name || '';
+          const rawPhone = record.phone || record.number || '';
+
+          if (!rawPhone.trim()) {
+            throw new Error(`Missing phone number at row ${index + 2}`);
+          }
+
+          const phone = sanitizePhone(rawPhone);
+
+          const extraFields = {};
+          for (const [key, value] of Object.entries(record)) {
+            if (!['name', 'phone', 'number'].includes(key)) {
+              extraFields[key] = value;
+            }
+          }
+
+          const result = await insertContact(
+            campaign.id,
+            name,
+            phone,
+            extraFields,
+          );
+
+          if (result.status === 'duplicate') {
+            duplicatePhones.push(phone);
+          }
+        }
+      });
+
+      await Promise.all(insertions);
+      fetchContacts();
+
+      if (duplicatePhones.length > 0) {
+        Alert.alert(
+          'Duplicate Contacts Skipped',
+          `The following numbers were already present and were not imported:\n\n${duplicatePhones.join(
+            '\n',
+          )}`,
+        );
+      } else {
+        Alert.alert('Success', 'Contacts imported successfully.');
+      }
+    } catch (err) {
+      if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
+        console.error('CSV Import Error:', err);
+        Alert.alert(
+          'Import Error',
+          err.message || 'An error occurred while importing the CSV file.',
         );
       }
     }

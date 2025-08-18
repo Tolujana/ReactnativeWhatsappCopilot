@@ -190,69 +190,6 @@ export const deleteContacts = (ids = [], callback) => {
   );
 };
 
-export const updateContact1 = (
-  contactId,
-  name,
-  phone,
-  extraFields,
-  callback,
-) => {
-  const extraFieldString = JSON.stringify(extraFields || {});
-
-  db.transaction(tx => {
-    tx.executeSql(
-      `UPDATE contacts 
-       SET name = ?, phone = ?, extra_field = ? 
-       WHERE id = ?;`,
-      [name, phone, extraFieldString, contactId],
-      (_, result) => {
-        console.log('Contact updated:', result.rowsAffected);
-        if (callback) callback();
-      },
-      error => {
-        console.error('Update contact error:', error);
-        return true;
-      },
-    );
-  });
-};
-
-export const updateContact3 = (contactId, name, phone, extraFields) => {
-  const extraFieldString = JSON.stringify(extraFields || {});
-
-  return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        `SELECT * FROM contacts WHERE phone = ? AND id != ?`,
-        [phone, contactId],
-        (_, {rows}) => {
-          if (rows.length > 0) {
-            resolve({status: 'duplicate', phone});
-          } else {
-            tx.executeSql(
-              `UPDATE contacts 
-               SET name = ?, phone = ?, extra_field = ? 
-               WHERE id = ?`,
-              [name, phone, extraFieldString, contactId],
-              (_, result) => {
-                resolve({status: 'updated', rowsAffected: result.rowsAffected});
-              },
-              error => {
-                console.error('Update error:', error);
-                reject(error);
-              },
-            );
-          }
-        },
-        error => {
-          console.error('Duplicate check error:', error);
-          reject(error);
-        },
-      );
-    });
-  });
-};
-
 export const updateContact = (
   contactId,
   name,
@@ -301,31 +238,6 @@ export const updateContact = (
         },
       );
     });
-  });
-};
-
-export const insertContact1 = (
-  campaignId,
-  name,
-  phone,
-  extraFields,
-  callback,
-) => {
-  const extraFieldString = JSON.stringify(extraFields || {});
-
-  db.transaction(tx => {
-    tx.executeSql(
-      `INSERT INTO contacts (campaign_id, name, phone, extra_field) VALUES (?, ?, ?, ?);`,
-      [campaignId, name, phone, extraFieldString],
-      (_, result) => {
-        console.log('Contact inserted:', result.insertId);
-        if (callback) callback(); // ✅ Callback should be called here
-      },
-      error => {
-        console.error('Insert contact error:', error);
-        return true; // Required to signal the error
-      },
-    );
   });
 };
 

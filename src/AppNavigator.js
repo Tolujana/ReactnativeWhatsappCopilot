@@ -10,7 +10,7 @@ import BulkMessaging from './screens/BulkMessaging/BulkMessaging';
 import GroupExtractor from './screens/GroupExtractor/GroupExtractor';
 import SettingsScreen from './screens/SettingsScreen';
 import SendMessageToNonContact from './screens/SendMessageToNonContact';
-import MessageRetriever from './screens/MessageRetriever/MessageRetriever';
+//import MessageRetriever from './screens/MessageRetriever/MessageRetriever';
 import CreateEditCampaignScreen from './screens/BulkMessaging/CreateEditCampaignScreen';
 import Home from './screens/Home';
 //import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
@@ -21,6 +21,10 @@ import WhatsappResultScreen from './screens/WhatsappResultScreen';
 import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
 import ContactSelectScreen from './components/ContactSelectScreen';
 import WrappedStatusSaver from './screens/StatusSaver/StatusSaver';
+import StatusSaverSettings from './screens/StatusSaver/StatusSaverSettings';
+import MessageReportScreen from './screens/BulkMessaging/MessageReportScreen';
+import MessengerCleanup from './screens/MessageCleanup/MessengerCleanup';
+import MessengerMediaGrid from './screens/MessageCleanup/MessengerMediaGrid';
 //import ContactSelectionScreen from './screens/BulkMessaging/ContactSelectionScreen';
 
 const Tab = createBottomTabNavigator();
@@ -63,11 +67,13 @@ const AppNavigator = ({toggleTheme}) => {
           component={SendMessageToNonContact}
         />
         <Stack.Screen name="GroupExtractor" component={GroupExtractor} />
-        <Stack.Screen name="MessageRetriever" component={MessageRetriever} />
+
         <Stack.Screen
           name="Select Contact(s)"
           component={ContactSelectScreen}
         />
+        <Stack.Screen name="MessageReport" component={MessageReportScreen} />
+
         <Stack.Screen
           name="CreateCampaign"
           component={CreateEditCampaignScreen}
@@ -81,6 +87,10 @@ const AppNavigator = ({toggleTheme}) => {
           component={EditCampaignScreen}
         />
         <Stack.Screen
+          name="StatusSaver Settings"
+          component={StatusSaverSettings}
+        />
+        <Stack.Screen
           name="Contact Selection"
           component={ContactFilterScreen}
         />
@@ -92,6 +102,12 @@ const AppNavigator = ({toggleTheme}) => {
           name="WhatsappResultScreen"
           component={WhatsappResultScreen}
         />
+        <Stack.Screen
+          name="MessengerMediaGrid"
+          component={MessengerMediaGrid}
+          options={{headerShown: false}} // Let the component handle its own Appbar
+        />
+        <Stack.Screen name="Messenger Cleanup" component={MessengerCleanup} />
       </Stack.Navigator>
     </NavigationContainer>
   );

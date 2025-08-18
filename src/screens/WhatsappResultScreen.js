@@ -13,7 +13,7 @@ import {launchWhatsappMessage} from '../util/WhatsappHelper';
 import {MyDataTable} from '../components/DataTable';
 
 const WhatsappResultScreen = ({navigation, route}) => {
-  const {totalContacts} = route.params;
+  const {totalContacts, whatsappPackage} = route.params;
   const [report, setReport] = useState(null);
   const [data, setData] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -64,8 +64,9 @@ const WhatsappResultScreen = ({navigation, route}) => {
     console.log('this is the selectedata', selectedData);
     navigation.navigate('WhatsappResultScreen', {
       totalContacts: selectedData,
+      whatsappPackage,
     });
-    launchWhatsappMessage(selectedData, 'com.whatsapp.w4b');
+    launchWhatsappMessage(selectedData, whatsappPackage);
   };
 
   return (

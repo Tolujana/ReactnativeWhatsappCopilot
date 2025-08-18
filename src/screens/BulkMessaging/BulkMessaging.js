@@ -16,9 +16,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {NativeModules} from 'react-native';
 
 const BulkMessagingScreen = ({navigation, route}) => {
-  const {campaign} = route.params;
+  const {campaign, prefillMessages} = route.params;
   const [inputMessage, setInputMessage] = useState('');
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(prefillMessages);
   const [media, setMedia] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
 
@@ -129,6 +129,7 @@ const BulkMessagingScreen = ({navigation, route}) => {
               />
             </TouchableOpacity>
           </View>
+          <View style={styles.bubbleTail} />
         </View>
       ))}
 
@@ -265,11 +266,13 @@ const styles = StyleSheet.create({
   messageBubble: {
     backgroundColor: '#EEF2FF',
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 20,
     marginBottom: 8,
+    maxWidth: '80%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    alignSelf: 'flex-end',
   },
   messageText: {
     flex: 1,
@@ -292,5 +295,16 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#4F46E5',
     fontWeight: '600',
+  },
+  bubbleTail: {
+    position: 'absolute',
+    right: -6,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    borderTopWidth: 10,
+    borderTopColor: '#E0E7FF',
+    borderLeftWidth: 10,
+    borderLeftColor: 'transparent',
   },
 });

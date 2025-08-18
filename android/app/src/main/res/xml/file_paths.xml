@@ -1,8 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Allows access to internal cache files for sharing via FileProvider -->
     <cache-path name="cache" path="." />
-
-    <!-- Allows access to external files if needed -->
     <external-path name="external_files" path="." />
+    <external-path name="status_saver_gallery" path="DCIM/StatusSaver" />
+    <external-path name="status_saver_pictures" path="Pictures/StatusSaver" />
 </paths>

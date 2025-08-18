@@ -1,3 +1,5 @@
+// ✅ CLEANED StatusSaver.js (no share/save)
+
 import React, {useState, useEffect, useCallback} from 'react';
 import CheckBox from '@react-native-community/checkbox';
 import {
@@ -12,7 +14,6 @@ import {
   Dimensions,
   PanResponder,
 } from 'react-native';
-import Share from 'react-native-share';
 import Video from 'react-native-video';
 import {NativeModules} from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
@@ -32,7 +33,7 @@ export default function StatusSaver() {
 
   const pickFolder = async () => {
     try {
-      const all = await StatusModule.openStatusFolderPicker();
+      const all = await StatusModule.openStatusFolderPicker('status');
       if (!all || all.length === 0) {
         Alert.alert(
           'No statuses found',
@@ -83,9 +84,17 @@ export default function StatusSaver() {
     setSelected(prev => ({...prev, [uri]: !prev[uri]}));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const selectedItems = Object.entries(selected).filter(([, v]) => v);
-    Alert.alert('Save', `Saving ${selectedItems.length} item(s)...`);
+    if (!selectedItems.length) return;
+    try {
+      for (const [uri] of selectedItems) {
+        await StatusModule.saveToGalleryAndGetUri(uri);
+      }
+      Alert.alert('Saved', `${selectedItems.length} item(s) saved to gallery.`);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save items');
+    }
   };
 
   useEffect(() => {
@@ -102,28 +111,6 @@ export default function StatusSaver() {
     };
     restorePrevious();
   }, []);
-
-  const shareMedia = async () => {
-    const uris = Object.entries(selected)
-      .filter(([, v]) => v)
-      .map(([u]) => u);
-    if (!uris.length) return;
-
-    try {
-      const cachedUris = [];
-      for (let uri of uris) {
-        const cached = await StatusModule.copyFileToCache(uri);
-        cachedUris.push(cached);
-      }
-
-      if (cachedUris.length) {
-        await Share.open({urls: cachedUris, type: '*/*'});
-      }
-    } catch (e) {
-      console.log('Share error:', e);
-      Alert.alert('Error', 'Share failed');
-    }
-  };
 
   const handleUseStatus = async () => {
     const chosen = Object.entries(selected).find(([, v]) => v);
@@ -212,7 +199,7 @@ export default function StatusSaver() {
       <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
         <Text style={{color: '#1976d2', textAlign: 'right'}}>⚙️ Settings</Text>
       </TouchableOpacity>
-      {!folderPicked && (
+      {!folderPicked && files.length === 0 && (
         <TouchableOpacity style={styles.btn} onPress={pickFolder}>
           <Text style={{color: '#fff'}}>Pick Android/media Folder</Text>
         </TouchableOpacity>
@@ -248,10 +235,7 @@ export default function StatusSaver() {
       {Object.values(selected).some(v => v) && (
         <View style={styles.actions}>
           <TouchableOpacity onPress={handleSave}>
-            <Text>💾 Save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={shareMedia}>
-            <Text>📤 Share</Text>
+            <Text>✅ save</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleUseStatus}>
             <Text>📥 Use as Status</Text>
