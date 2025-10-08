@@ -16,6 +16,7 @@ import {IconButton, Checkbox, Snackbar, Chip, Button} from 'react-native-paper';
 import {useFocusEffect} from '@react-navigation/native';
 import {NativeModules} from 'react-native';
 import Video from 'react-native-video';
+import {Header} from 'react-native/Libraries/NewAppScreen';
 
 const {StatusModule} = NativeModules;
 const screenWidth = Dimensions.get('window').width;
@@ -31,7 +32,7 @@ const sizeBucket = size => {
   return '100MB+';
 };
 
-const MessengerMediaGrid = ({route}) => {
+const MessengerMediaGrid = ({route, toggleTheme}) => {
   const {appKey: selectedMessenger, treeUri: folderUri} = route.params;
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -198,6 +199,7 @@ const MessengerMediaGrid = ({route}) => {
 
   return (
     <View style={{flex: 1}}>
+      <Header toggleTheme={toggleTheme} showBackButton={false} />
       {/* Folder Chips */}
       <ScrollView
         horizontal

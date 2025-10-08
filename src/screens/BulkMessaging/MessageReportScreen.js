@@ -6,24 +6,81 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
-import {getMessageReport} from '../../util/database'; // Adjust the import path as needed
+import {IconButton} from 'react-native-paper';
 import {useNavigation} from '@react-navigation/native';
+import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
+import {getMessageReport, deleteSentMessages} from '../../util/data';
+
 const MessageReportScreen = () => {
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
+
   useEffect(() => {
-    getMessageReport(data => {
+    loadMessages();
+  }, []);
+
+  const loadMessages = async () => {
+    try {
+      setLoading(true);
+      const data = await getMessageReport();
       setReportData(data);
+    } catch (e) {
+      console.warn('Failed to load message report', e);
+      Alert.alert('Error', 'Failed to load message history');
+    } finally {
       setLoading(false);
-    });
+    }
+  };
+
+  const handleDelete = async id => {
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message history entry?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteSentMessages([id]);
+              await loadMessages();
+            } catch (e) {
+              Alert.alert('Delete failed', String(e.message || e));
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Insert banner ads after every 3rd item
+  const dataWithAds = reportData.reduce((acc, item, index) => {
+    acc.push({type: 'message', data: item});
+    if ((index + 1) % 3 === 0) {
+      acc.push({type: 'ad', id: `ad-${index}`});
+    }
+    return acc;
   }, []);
 
   const renderItem = ({item}) => {
-    const {date, data} = item;
-    const rawMessage = data[0]?.message || []; // assuming only one message per entry
-    console.log('Raw message:', rawMessage);
+    if (item.type === 'ad') {
+      return (
+        <View style={styles.adContainer}>
+          <BannerAd
+            unitId="ca-app-pub-3940256099942544/6300978111" // Test ID, replace with your AdMob ID
+            size={BannerAdSize.BANNER}
+            requestOptions={{requestNonPersonalizedAdsOnly: true}}
+          />
+        </View>
+      );
+    }
+
+    const {date, data, id} = item.data;
+    const rawMessage = data[0]?.message || [];
     return (
       <TouchableOpacity
         style={styles.messageCard}
@@ -33,8 +90,16 @@ const MessageReportScreen = () => {
           })
         }>
         <View style={styles.card}>
-          <Text style={styles.date}>{new Date(date).toLocaleString()}</Text>
-          <Text style={styles.label}>sent Message:</Text>
+          <View style={styles.cardHeader}>
+            <Text style={styles.date}>{new Date(date).toLocaleString()}</Text>
+            <IconButton
+              icon="delete"
+              size={20}
+              iconColor="#d32f2f"
+              onPress={() => handleDelete(id)}
+            />
+          </View>
+          <Text style={styles.label}>Sent Message:</Text>
           <Text style={styles.message}>{rawMessage?.join(' ')}</Text>
         </View>
       </TouchableOpacity>
@@ -62,8 +127,10 @@ const MessageReportScreen = () => {
 
   return (
     <FlatList
-      data={reportData}
-      keyExtractor={item => item.id.toString()}
+      data={dataWithAds}
+      keyExtractor={(item, index) =>
+        item.type === 'message' ? item.data.id.toString() : item.id
+      }
       renderItem={renderItem}
       contentContainerStyle={styles.listContainer}
     />
@@ -80,6 +147,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 10,
     elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   date: {
     fontSize: 12,
@@ -104,6 +176,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#999',
+  },
+  adContainer: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  messageCard: {
+    marginBottom: 12,
   },
 });
 

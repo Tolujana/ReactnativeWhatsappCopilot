@@ -7,15 +7,26 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import {getCampaigns} from '../../util/database';
-//import {getAllCampaigns} from '../../database/database'; // Adjust path as needed
+import {Text as PaperText, useTheme} from 'react-native-paper';
+import {getCampaigns} from '../../util/data';
+import Header from '../../components/Header';
+import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 
-const CampaignSelectionScreen = ({navigation, route}) => {
+const CampaignSelectionScreen = ({navigation, route, toggleTheme}) => {
+  const theme = useTheme();
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
 
   useEffect(() => {
-    getCampaigns(setCampaigns);
+    const load = async () => {
+      try {
+        const cams = await getCampaigns();
+        setCampaigns(cams);
+      } catch (e) {
+        setCampaigns([]);
+      }
+    };
+    load();
   }, []);
 
   const handleNext = () => {
@@ -32,29 +43,73 @@ const CampaignSelectionScreen = ({navigation, route}) => {
     });
   };
 
-  const renderItem = ({item}) => {
+  const renderItem = ({item, index}) => {
     const isSelected = item.id === selectedCampaignId;
     return (
-      <TouchableOpacity
-        style={[styles.card, isSelected && styles.selectedCard]}
-        onPress={() => setSelectedCampaignId(item.id)}>
-        <Text style={styles.cardTitle}>{item.name}</Text>
-        <Text style={styles.cardSubtitle}>{item.description}</Text>
-      </TouchableOpacity>
+      <>
+        <TouchableOpacity
+          style={[
+            styles.card,
+            {backgroundColor: theme.colors.elevation.level2},
+            isSelected && {
+              backgroundColor: theme.colors.secondaryContainer,
+              borderColor: theme.colors.primary,
+              borderWidth: 2,
+            },
+          ]}
+          onPress={() => setSelectedCampaignId(item.id)}>
+          <Text style={[styles.cardTitle, {color: theme.colors.onSurface}]}>
+            {item.name}
+          </Text>
+          <Text
+            style={[
+              styles.cardSubtitle,
+              {color: theme.colors.onSurfaceVariant},
+            ]}>
+            {item.description}
+          </Text>
+        </TouchableOpacity>
+        {(index + 1) % 3 === 0 && (
+          <View style={styles.bannerContainer}>
+            <BannerAd
+              unitId="ca-app-pub-3940256099942544/6300978111"
+              size={BannerAdSize.BANNER}
+            />
+          </View>
+        )}
+      </>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Select a Campaign</Text>
+    <View
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      <Header toggleTheme={toggleTheme} showBackButton={true} />
+      <View style={styles.bannerContainer}>
+        <BannerAd
+          unitId="ca-app-pub-3940256099942544/6300978111"
+          size={BannerAdSize.BANNER}
+        />
+      </View>
+      <PaperText style={[styles.header, {color: theme.colors.onSurface}]}>
+        Select a Campaign
+      </PaperText>
       <FlatList
         data={campaigns}
         keyExtractor={item => item.id.toString()}
         renderItem={renderItem}
-        ListEmptyComponent={<Text>No campaigns available.</Text>}
+        ListEmptyComponent={
+          <Text style={{color: theme.colors.onSurface}}>
+            No campaigns available.
+          </Text>
+        }
       />
-      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-        <Text style={styles.nextButtonText}>Next</Text>
+      <TouchableOpacity
+        style={[styles.nextButton, {backgroundColor: theme.colors.primary}]}
+        onPress={handleNext}>
+        <Text style={[styles.nextButtonText, {color: theme.colors.onPrimary}]}>
+          Next
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -66,7 +121,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#fff',
   },
   header: {
     fontSize: 22,
@@ -76,13 +130,7 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     borderRadius: 10,
-    backgroundColor: '#E5E7EB',
     marginBottom: 12,
-  },
-  selectedCard: {
-    backgroundColor: '#C7D2FE',
-    borderColor: '#4F46E5',
-    borderWidth: 2,
   },
   cardTitle: {
     fontSize: 16,
@@ -90,18 +138,19 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     fontSize: 14,
-    color: '#555',
     marginTop: 4,
   },
   nextButton: {
-    backgroundColor: '#4F46E5',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 16,
   },
   nextButtonText: {
-    color: 'white',
     fontWeight: 'bold',
+  },
+  bannerContainer: {
+    alignItems: 'center',
+    marginVertical: 8,
   },
 });

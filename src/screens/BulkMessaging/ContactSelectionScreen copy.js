@@ -1,15 +1,33 @@
+//clean this file and remove unused imports and functions and console logs
+
 import React, {useCallback, useEffect, useState} from 'react';
 import RNFS from 'react-native-fs';
 import {
   View,
+  FlatList,
   StyleSheet,
   PermissionsAndroid,
   Platform,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
-import {pick} from '@react-native-documents/picker';
-import {FAB, Portal, Provider, Button, useTheme} from 'react-native-paper';
 import {
+  TextInput,
+  Card,
+  FAB,
+  Portal,
+  Provider,
+  Text,
+  Modal,
+  Button,
+  IconButton,
+  DataTable,
+  Checkbox,
+} from 'react-native-paper';
+import Contacts from 'react-native-contacts';
+import {pick} from '@react-native-documents/picker';
+import {
+  deleteContact,
   deleteContacts,
   getContactsByCampaignId,
   insertContact,
@@ -19,35 +37,61 @@ import ContactModal from '../../components/ContactModal';
 import ContactTable from '../../components/ContactTable';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import MyFab from '../../components/MyFab';
-import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 
 export default function ContactSelectionScreen({route, campaignData}) {
-  const navigation = useNavigation(); // Add this hook
-  const theme = useTheme();
   const {campaign} = route?.params || campaignData;
+  console.log(campaign, 'this is campaign');
   const [contacts, setContacts] = useState([]);
+  const [allContacts, setAllContacts] = useState([]);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingContactId, setEditingContactId] = useState(null);
-  const [initialModalData, setInitialModalData] = useState({});
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [extraFields, setExtraFields] = useState({});
   const [fabOpen, setFabOpen] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState({});
+  const [initialModalData, setInitialModalData] = useState({});
   const [contactSelectorModalVisible, setContactSelectorModalVisible] =
     useState(false);
+  useEffect(() => {
+    fetchContacts();
+  }, []);
+  const toggleSelectContact = id => {
+    setSelectedContacts(prev => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
+  const isAnySelected = Object.values(selectedContacts).some(v => v);
   useFocusEffect(
     useCallback(() => {
-      fetchContacts();
+      // This runs every time the screen is focused (comes into view)
+      fetchContacts(); // Your function to load updated contact data
     }, []),
   );
 
-  const fetchContacts = async () => {
-    try {
-      const result = await getContactsByCampaignId(campaign.id);
-      setContacts(result);
-    } catch (e) {}
-  };
+  useEffect(() => {
+    const fetchContacts = async () => {
+      const permission = await requestContactsPermission();
+      if (permission) {
+        // also fixed the condition here
+        Contacts.getAll().then(contacts => {
+          setAllContacts(contacts);
+        });
+      }
+    };
+    fetchContacts();
+  }, []);
 
+  const fetchContacts = () => {
+    getContactsByCampaignId(campaign.id, result => {
+      console.log('Fetched contacts:', result); // Debug log
+      setContacts([...result]); // Spread to ensure it's a new reference
+    });
+  };
   const getInvalidExtraFields = (fields, allowedKeys) => {
     return Object.keys(fields).filter(key => !allowedKeys.includes(key));
   };
@@ -92,6 +136,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
   };
 
   const handleModalSave = async ({name, phone, extraFields}) => {
+    console.log('Saving contact:', {name, phone, extraFields});
     if (!name || !phone) {
       Alert.alert('Missing Fields', 'Please enter both name and phone.');
       return;
@@ -100,6 +145,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
     const invalidKeys = getInvalidExtraFields(
       extraFields,
       JSON.parse(campaign.extra_fields),
+      // campaign.extraFields,
     );
     if (invalidKeys.length > 0) {
       showInvalidFieldsAlert(invalidKeys, campaign.extraFields);
@@ -108,7 +154,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
 
     try {
       if (isEditMode && editingContactId) {
-        const originalPhone = initialModalData.phone;
+        const originalPhone = initialModalData.phone; // pass this in from state
         const isPhoneChanged = originalPhone !== phone;
 
         const result = await updateContact(
@@ -116,7 +162,15 @@ export default function ContactSelectionScreen({route, campaignData}) {
           name,
           phone,
           extraFields,
+          isPhoneChanged,
         );
+        if (result.status === 'duplicate') {
+          Alert.alert(
+            'Duplicate Phone Number',
+            'This phone number already exists.',
+          );
+          return;
+        }
       } else {
         const result = await insertContact(
           campaign.id,
@@ -136,13 +190,9 @@ export default function ContactSelectionScreen({route, campaignData}) {
       setModalVisible(false);
       fetchContacts();
     } catch (err) {
+      console.error('Save error:', err);
       Alert.alert('Error', 'Something went wrong while saving the contact.');
     }
-  };
-
-  const handleDone = () => {
-    // Navigate back to Home screen
-    navigation.navigate('Main', {screen: 'Home'});
   };
 
   const handleAddContacts = async contactsToAdd => {
@@ -174,6 +224,101 @@ export default function ContactSelectionScreen({route, campaignData}) {
       );
     } else {
       Alert.alert('Success', 'Contacts added successfully.');
+    }
+  };
+
+  const handleImportFromCSV2 = async () => {
+    try {
+      const [res] = await pick({
+        type: [
+          'text/csv',
+          'application/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          '*/*',
+        ],
+      });
+
+      const fileExtension = res.name.split('.').pop().toLowerCase();
+      if (fileExtension !== 'csv') {
+        Alert.alert('Invalid File', 'Please select a valid .csv file.');
+        return;
+      }
+
+      const content = await RNFS.readFile(res.uri, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+
+      if (lines.length < 2) {
+        Alert.alert(
+          'CSV Error',
+          'The CSV file must contain headers and at least one data row.',
+        );
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const duplicatePhones = [];
+
+      const sanitizePhone = raw => {
+        const cleaned = raw.trim().replace(/[^\d+]/g, '');
+        return raw.trim().startsWith('+')
+          ? '+' + cleaned.replace(/\+/g, '')
+          : cleaned.replace(/\+/g, '');
+      };
+
+      const insertions = lines.slice(1).map(async line => {
+        const parts = line.split(',').map(p => p.trim());
+
+        if (parts.length >= 2) {
+          const record = Object.fromEntries(
+            headers.map((key, i) => [key, parts[i] || '']),
+          );
+
+          const name = record.name || '';
+          const phone = sanitizePhone(record.phone || '');
+
+          // Build extra fields (exclude name/phone)
+          const extraFields = {};
+          for (const [key, value] of Object.entries(record)) {
+            if (key !== 'name' && key !== 'phone') {
+              extraFields[key] = value;
+            }
+          }
+
+          const result = await insertContact(
+            campaign.id,
+            name,
+            phone,
+            extraFields,
+          );
+
+          if (result.status === 'duplicate') {
+            duplicatePhones.push(phone);
+          }
+        }
+      });
+
+      await Promise.all(insertions);
+      fetchContacts();
+
+      if (duplicatePhones.length > 0) {
+        Alert.alert(
+          'Duplicate Contacts Skipped',
+          `The following numbers were already present and were not imported:\n\n${duplicatePhones.join(
+            '\n',
+          )}`,
+        );
+      } else {
+        Alert.alert('Success', 'Contacts imported successfully.');
+      }
+    } catch (err) {
+      if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
+        console.error('CSV Import Error:', err);
+        Alert.alert(
+          'Import Error',
+          'An error occurred while importing the CSV file.',
+        );
+      }
     }
   };
 
@@ -268,6 +413,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
       }
     } catch (err) {
       if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
+        console.error('CSV Import Error:', err);
         Alert.alert(
           'Import Error',
           err.message || 'An error occurred while importing the CSV file.',
@@ -276,69 +422,17 @@ export default function ContactSelectionScreen({route, campaignData}) {
     }
   };
 
-  const styles = StyleSheet.create({
-    fab: {
-      position: 'absolute',
-      right: 16,
-      bottom: 60,
-      backgroundColor: theme.colors.primary,
-    },
-    fabOption: {
-      position: 'absolute',
-      right: 16,
-      backgroundColor: theme.colors.primary,
-    },
-    doneButtonContainer: {
-      padding: 16,
-      backgroundColor: theme.colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.outline,
-    },
-    doneButton: {
-      paddingVertical: 4,
-      backgroundColor: theme.colors.primary,
-    },
-    doneButtonLabel: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: theme.colors.onPrimary,
-    },
-    bannerContainer: {
-      alignItems: 'center',
-      marginVertical: 8,
-      backgroundColor: theme.colors.surface,
-    },
-  });
-
   return (
     <Provider>
-      <View
-        style={{flex: 1, padding: 1, backgroundColor: theme.colors.background}}>
+      <View style={{flex: 1, padding: 1}}>
         <ContactTable
           contacts={contacts}
           selectedContacts={selectedContacts}
-          toggleSelectContact={id =>
-            setSelectedContacts(prev => ({...prev, [id]: !prev[id]}))
-          }
+          toggleSelectContact={toggleSelectContact}
           openEditModal={openEditModal}
           fetchContacts={fetchContacts}
           extraFieldsKeys={JSON.parse(campaign.extra_fields)}
         />
-        <View style={styles.bannerContainer}>
-          <BannerAd
-            unitId="ca-app-pub-3940256099942544/6300978111"
-            size={BannerAdSize.BANNER}
-          />
-        </View>
-        <View style={styles.doneButtonContainer}>
-          <Button
-            mode="contained"
-            onPress={handleDone}
-            style={styles.doneButton}
-            labelStyle={styles.doneButtonLabel}>
-            Done
-          </Button>
-        </View>
         <Portal>
           <ContactModal
             visible={modalVisible}
@@ -389,3 +483,34 @@ export default function ContactSelectionScreen({route, campaignData}) {
     </Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+  },
+  fabOption: {
+    position: 'absolute',
+    right: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
+    borderRadius: 8,
+  },
+  tableHeader: {
+    backgroundColor: '#eee',
+  },
+  deleteFab: {
+    position: 'absolute',
+    left: 16,
+    bottom: 16,
+    backgroundColor: 'red',
+  },
+});

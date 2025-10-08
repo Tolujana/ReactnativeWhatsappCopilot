@@ -84,13 +84,32 @@ export default function MessengerCleanup() {
     }
   };
 
+  // Helper function to check if the treeUri is the Android/media folder
+  const isAndroidMediaFolder = treeUri => {
+    if (!treeUri) return false;
+
+    // Convert URI to string and check for Android/media path patterns
+    const uriString = treeUri.toString().toLowerCase();
+
+    // Check for common patterns that indicate Android/media folder
+    const androidMediaPatterns = [
+      '/android/media',
+      '%2fandroid%2fmedia',
+      'android%2fmedia',
+      'content://com.android.externalstorage.documents/tree/primary%3Aandroid%2fmedia',
+      'content://com.android.externalstorage.documents/tree/primary%3Aandroid/document/primary%3Aandroid%2fmedia',
+    ];
+
+    return androidMediaPatterns.some(pattern => uriString.includes(pattern));
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.noticeBox}>
         <Text variant="bodyMedium" style={{textAlign: 'center'}}>
-          {treeUri
-            ? 'You’ve already selected a folder. You can change it if needed.'
-            : 'You must select the Android/media folder to access messenger media.'}
+          {isAndroidMediaFolder(treeUri)
+            ? "You've selected the correct Android/media folder."
+            : 'Selected folder is not Android/media. Please select the correct folder.'}
         </Text>
         <Button mode="contained" onPress={pickFolder} style={{marginTop: 8}}>
           {treeUri ? 'Change Folder' : 'Pick Folder'}

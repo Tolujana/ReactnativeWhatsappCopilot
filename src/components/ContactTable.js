@@ -4,7 +4,6 @@ import {
   StyleSheet,
   ScrollView,
   View,
-  Text,
   Dimensions,
   TextInput,
   TouchableOpacity,
@@ -18,8 +17,11 @@ import {
   Button,
   Modal,
   Portal,
+  Text,
+  useTheme,
 } from 'react-native-paper';
-import {deleteContacts, updateContact} from '../util/database';
+import {deleteContacts, updateContact} from '../util/data';
+import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -32,6 +34,7 @@ export default function ContactTable({
   loading = false,
   extraFieldsKeys = [],
 }) {
+  const theme = useTheme();
   const [invalidIds, setInvalidIds] = useState([]);
   const [visibleFields, setVisibleFields] = useState([]);
   const [showFieldSelector, setShowFieldSelector] = useState(false);
@@ -95,8 +98,85 @@ export default function ContactTable({
     setIsEditing(prev => !prev);
   };
 
+  const styles = StyleSheet.create({
+    table: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: 8,
+      overflow: 'hidden',
+      width: '98%',
+      alignSelf: 'center',
+    },
+    tableHeader: {
+      backgroundColor: theme.colors.surfaceVariant,
+    },
+    invalidRow: {
+      backgroundColor: theme.colors.errorContainer,
+    },
+    editingRow: {
+      backgroundColor: theme.colors.secondaryContainer,
+    },
+    warningText: {
+      color: theme.colors.error,
+      fontWeight: 'bold',
+      marginVertical: 10,
+      marginLeft: 12,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      padding: 10,
+      backgroundColor: theme.colors.background,
+    },
+    modal: {
+      backgroundColor: theme.colors.surface,
+      padding: 20,
+      margin: 20,
+      borderRadius: 10,
+      width: SCREEN_WIDTH * 0.9,
+      alignSelf: 'center',
+    },
+    modalTitle: {
+      fontWeight: 'bold',
+      fontSize: 16,
+      marginBottom: 10,
+      color: theme.colors.onSurface,
+    },
+    checkboxRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+    },
+    loaderContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+    },
+    textInput: {
+      backgroundColor: theme.colors.background,
+      padding: 4,
+      fontSize: 14,
+      borderWidth: 1,
+      borderColor: theme.colors.outline,
+      borderRadius: 4,
+      color: theme.colors.onSurface,
+    },
+    expandedInput: {
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
+    bannerContainer: {
+      alignItems: 'center',
+      marginVertical: 8,
+      backgroundColor: theme.colors.surface,
+    },
+    cellText: {
+      color: theme.colors.onSurface,
+    },
+  });
+
   return (
-    <View style={{flex: 1}}>
+    <View style={{flex: 1, backgroundColor: theme.colors.background}}>
       <Portal>
         <Modal
           visible={showFieldSelector}
@@ -105,7 +185,9 @@ export default function ContactTable({
           <Text style={styles.modalTitle}>Toggle Visible Fields</Text>
 
           {extraFieldsKeys.length === 0 ? (
-            <Text>No extra fields to show</Text>
+            <Text style={{color: theme.colors.onSurface}}>
+              No extra fields to show
+            </Text>
           ) : (
             extraFieldsKeys.map(field => (
               <View key={field} style={styles.checkboxRow}>
@@ -114,8 +196,9 @@ export default function ContactTable({
                     visibleFields.includes(field) ? 'checked' : 'unchecked'
                   }
                   onPress={() => toggleField(field)}
+                  color={theme.colors.primary}
                 />
-                <Text>{field}</Text>
+                <Text style={{color: theme.colors.onSurface}}>{field}</Text>
               </View>
             ))
           )}
@@ -147,7 +230,11 @@ export default function ContactTable({
 
       {isLoading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator animating size="large" />
+          <ActivityIndicator
+            animating
+            size="large"
+            color={theme.colors.primary}
+          />
         </View>
       ) : (
         <>
@@ -163,13 +250,23 @@ export default function ContactTable({
             contentContainerStyle={{paddingBottom: 100}}>
             <DataTable style={styles.table}>
               <DataTable.Header style={styles.tableHeader}>
-                <DataTable.Title style={{flex: 0.5}}>✔</DataTable.Title>
-                <DataTable.Title style={{flex: 1}}>👤 Name</DataTable.Title>
-                <DataTable.Title style={{flex: 2.5}}>📱 Number</DataTable.Title>
+                <DataTable.Title style={{flex: 0.5}}>
+                  <Text style={styles.cellText}>✔</Text>
+                </DataTable.Title>
+                <DataTable.Title style={{flex: 1}}>
+                  <Text style={styles.cellText}>👤 Name</Text>
+                </DataTable.Title>
+                <DataTable.Title style={{flex: 2.5}}>
+                  <Text style={styles.cellText}>📱 Number</Text>
+                </DataTable.Title>
                 {visibleFields.map(field => (
-                  <DataTable.Title key={field}>{field}</DataTable.Title>
+                  <DataTable.Title key={field}>
+                    <Text style={styles.cellText}>{field}</Text>
+                  </DataTable.Title>
                 ))}
-                <DataTable.Title style={{flex: 1}}>✏️ Edit</DataTable.Title>
+                <DataTable.Title style={{flex: 1}}>
+                  <Text style={styles.cellText}>✏️ Edit</Text>
+                </DataTable.Title>
               </DataTable.Header>
 
               {editableData.map((item, index) => {
@@ -203,52 +300,60 @@ export default function ContactTable({
                       <Checkbox
                         status={isChecked ? 'checked' : 'unchecked'}
                         onPress={() => toggleSelectContact(item.id)}
+                        color={theme.colors.primary}
                       />
                     </DataTable.Cell>
 
                     <DataTable.Cell style={{flex: 1}}>
-                      {isEditing
-                        ? renderInput(
-                            item.name,
-                            text => {
-                              const updated = [...editableData];
-                              updated[index].name = text;
-                              setEditableData(updated);
-                            },
-                            'name',
-                          )
-                        : item.name}
+                      {isEditing ? (
+                        renderInput(
+                          item.name,
+                          text => {
+                            const updated = [...editableData];
+                            updated[index].name = text;
+                            setEditableData(updated);
+                          },
+                          'name',
+                        )
+                      ) : (
+                        <Text style={styles.cellText}>{item.name}</Text>
+                      )}
                     </DataTable.Cell>
 
                     <DataTable.Cell style={{flex: 2.5}}>
-                      {isEditing
-                        ? renderInput(
-                            item.phone,
-                            text => {
-                              const updated = [...editableData];
-                              updated[index].phone = text;
-                              setEditableData(updated);
-                            },
-                            'phone',
-                          )
-                        : item.phone}
+                      {isEditing ? (
+                        renderInput(
+                          item.phone,
+                          text => {
+                            const updated = [...editableData];
+                            updated[index].phone = text;
+                            setEditableData(updated);
+                          },
+                          'phone',
+                        )
+                      ) : (
+                        <Text style={styles.cellText}>{item.phone}</Text>
+                      )}
                     </DataTable.Cell>
 
                     {visibleFields.map(field => (
                       <DataTable.Cell key={field}>
-                        {isEditing
-                          ? renderInput(
-                              item.extra_field?.[field.toLowerCase()] || '',
-                              text => {
-                                const updated = [...editableData];
-                                updated[index].extra_field[
-                                  field.toLowerCase()
-                                ] = text;
-                                setEditableData(updated);
-                              },
-                              field.toLowerCase(),
-                            )
-                          : item.extra_field?.[field.toLowerCase()] || ''}
+                        {isEditing ? (
+                          renderInput(
+                            item.extra_field?.[field.toLowerCase()] || '',
+                            text => {
+                              const updated = [...editableData];
+                              updated[index].extra_field[field.toLowerCase()] =
+                                text;
+                              setEditableData(updated);
+                            },
+                            field.toLowerCase(),
+                          )
+                        ) : (
+                          <Text style={styles.cellText}>
+                            {item.extra_field?.[field.toLowerCase()] || ''}
+                          </Text>
+                        )}
                       </DataTable.Cell>
                     ))}
 
@@ -258,6 +363,7 @@ export default function ContactTable({
                           icon="pencil"
                           size={20}
                           onPress={() => openEditModal(item)}
+                          iconColor={theme.colors.primary}
                         />
                       )}
                     </DataTable.Cell>
@@ -266,86 +372,14 @@ export default function ContactTable({
               })}
             </DataTable>
           </ScrollView>
+          <View style={styles.bannerContainer}>
+            <BannerAd
+              unitId="ca-app-pub-3940256099942544/6300978111"
+              size={BannerAdSize.BANNER}
+            />
+          </View>
         </>
-      )}
-
-      {isAnySelected && (
-        <FAB
-          icon="delete"
-          style={{
-            position: 'absolute',
-            left: 16,
-            bottom: 16,
-            backgroundColor: 'red',
-          }}
-          onPress={handleDelete}
-        />
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  table: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    overflow: 'hidden',
-    width: '98%',
-    alignSelf: 'center',
-  },
-  tableHeader: {
-    backgroundColor: '#e0e0e0',
-  },
-  invalidRow: {
-    backgroundColor: '#ffe5e5',
-  },
-  editingRow: {
-    backgroundColor: '#fff8dc',
-  },
-  warningText: {
-    color: '#b00020',
-    fontWeight: 'bold',
-    marginVertical: 10,
-    marginLeft: 12,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 10,
-  },
-  modal: {
-    backgroundColor: 'white',
-    padding: 20,
-    margin: 20,
-    borderRadius: 10,
-    width: SCREEN_WIDTH * 0.9,
-    alignSelf: 'center',
-  },
-  modalTitle: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textInput: {
-    backgroundColor: 'white',
-    padding: 4,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 4,
-  },
-  expandedInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-});

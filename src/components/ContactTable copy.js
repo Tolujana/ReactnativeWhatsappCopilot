@@ -17,7 +17,7 @@ import {
   Modal,
   Portal,
 } from 'react-native-paper';
-import {deleteContacts} from '../util/database';
+import {deleteContacts} from '../util/data';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 

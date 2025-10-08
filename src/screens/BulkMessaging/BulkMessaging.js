@@ -5,17 +5,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  AccessibilityInfo,
   TextInput,
   Image,
   FlatList,
+  useWindowDimensions,
 } from 'react-native';
+import {Text as PaperText, useTheme} from 'react-native-paper';
 import {launchImageLibrary} from 'react-native-image-picker';
-import {openAccessibilitySettings} from '../../util/AccessibilityService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {NativeModules} from 'react-native';
+import Header from '../../components/Header';
+import {getCampaigns} from '../../util/data';
+import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 
-const BulkMessagingScreen = ({navigation, route}) => {
+const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
+  const theme = useTheme();
+  const {width} = useWindowDimensions();
   const {campaign, prefillMessages} = route.params;
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState(prefillMessages);
@@ -105,18 +109,35 @@ const BulkMessagingScreen = ({navigation, route}) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Compose Message</Text>
+    <View
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      <Header toggleTheme={toggleTheme} showBackButton={true} />
+      <View style={styles.bannerContainer}>
+        <BannerAd
+          unitId="ca-app-pub-3940256099942544/6300978111"
+          size={BannerAdSize.BANNER}
+        />
+      </View>
+      <PaperText style={[styles.header, {color: theme.colors.onSurface}]}>
+        Compose Message
+      </PaperText>
 
       {messages.map((msg, index) => (
-        <View key={index} style={styles.messageBubble}>
-          <Text style={styles.messageText}>{msg}</Text>
+        <View
+          key={index}
+          style={[
+            styles.messageBubble,
+            {backgroundColor: theme.colors.elevation.level1},
+          ]}>
+          <Text style={[styles.messageText, {color: theme.colors.onSurface}]}>
+            {msg}
+          </Text>
           <View style={styles.iconGroup}>
             <TouchableOpacity onPress={() => editMessage(index)}>
               <Icon
                 name="pencil-outline"
                 size={18}
-                color="#4F46E5"
+                color={theme.colors.primary}
                 style={styles.icon}
               />
             </TouchableOpacity>
@@ -124,60 +145,99 @@ const BulkMessagingScreen = ({navigation, route}) => {
               <Icon
                 name="trash-can-outline"
                 size={18}
-                color="#EF4444"
+                color={theme.colors.error}
                 style={styles.icon}
               />
             </TouchableOpacity>
           </View>
-          <View style={styles.bubbleTail} />
+          <View
+            style={[
+              styles.bubbleTail,
+              {borderTopColor: theme.colors.elevation.level1},
+            ]}
+          />
         </View>
       ))}
 
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          {
+            borderColor: theme.colors.outline,
+            backgroundColor: theme.colors.surface,
+            color: theme.colors.onSurface,
+          },
+        ]}
         multiline
         placeholder="Type your message here..."
+        placeholderTextColor={theme.colors.onSurfaceVariant}
         value={inputMessage}
         onChangeText={setInputMessage}
       />
-      <TouchableOpacity style={styles.addButton} onPress={addMessage}>
-        <Text style={styles.addButtonText}>
+      <TouchableOpacity
+        style={[
+          styles.addButton,
+          {backgroundColor: theme.colors.primaryContainer},
+        ]}
+        onPress={addMessage}>
+        <Text
+          style={[
+            styles.addButtonText,
+            {color: theme.colors.onPrimaryContainer},
+          ]}>
           {editingIndex !== null ? 'Update Message' : 'Add Message'}
         </Text>
       </TouchableOpacity>
-
-      {/* <TouchableOpacity style={styles.addButton} onPress={handleAddMessage}>
-          <Text style={styles.addButtonText}>+ Add Message</Text>
-        </TouchableOpacity> */}
 
       <View style={styles.placeholderRow}>
         {['name', 'phone', ...(JSON.parse(campaign?.extra_fields) || [])].map(
           (field, index) => (
             <TouchableOpacity
               key={index}
-              style={styles.placeholderButton}
+              style={[
+                styles.placeholderButton,
+                {backgroundColor: theme.colors.secondaryContainer},
+              ]}
               onPress={() => insertPlaceholder(field)}>
-              <Text style={styles.placeholderText}>
+              <Text
+                style={[
+                  styles.placeholderText,
+                  {color: theme.colors.onSecondaryContainer},
+                ]}>
                 + {field.charAt(0).toUpperCase() + field.slice(1)}
               </Text>
             </TouchableOpacity>
           ),
         )}
       </View>
+      <View style={styles.bannerContainer}>
+        <BannerAd
+          unitId="ca-app-pub-3940256099942544/6300978111"
+          size={BannerAdSize.BANNER}
+        />
+      </View>
       <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
-        <Icon name="attachment" size={22} color="#4F46E5" />
-        <Text style={{marginLeft: 6, color: '#4F46E5'}}>Attach Media</Text>
+        <Icon name="attachment" size={22} color={theme.colors.primary} />
+        <Text style={{marginLeft: 6, color: theme.colors.primary}}>
+          Attach Media
+        </Text>
       </TouchableOpacity>
 
       {media && (
         <View style={styles.preview}>
           <Image source={{uri: media.uri}} style={styles.previewImage} />
-          <Text numberOfLines={1}>{media.fileName}</Text>
+          <Text style={{color: theme.colors.onSurface}} numberOfLines={1}>
+            {media.fileName}
+          </Text>
         </View>
       )}
 
-      <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-        <Text style={styles.sendButtonText}>Next</Text>
+      <TouchableOpacity
+        style={[styles.sendButton, {backgroundColor: theme.colors.primary}]}
+        onPress={handleSend}>
+        <Text style={[styles.sendButtonText, {color: theme.colors.onPrimary}]}>
+          Next
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -188,7 +248,6 @@ export default BulkMessagingScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
     padding: 16,
   },
   header: {
@@ -198,31 +257,40 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
     minHeight: 80,
     textAlignVertical: 'top',
     marginBottom: 8,
   },
-  chatBubble: {
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
+  messageBubble: {
+    padding: 10,
+    borderRadius: 20,
     marginBottom: 8,
+    maxWidth: '80%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     alignSelf: 'flex-end',
-    maxWidth: '90%',
+  },
+  messageText: {
+    flex: 1,
+  },
+  iconGroup: {
+    flexDirection: 'row',
+    marginLeft: 10,
+  },
+  icon: {
+    marginLeft: 8,
   },
   addButton: {
-    backgroundColor: '#E0E7FF',
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 6,
+    marginBottom: 10,
     alignItems: 'center',
-    marginBottom: 12,
   },
   addButtonText: {
-    color: '#4F46E5',
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   placeholderRow: {
     flexDirection: 'row',
@@ -232,11 +300,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: '#E0E7FF',
     borderRadius: 6,
   },
   placeholderText: {
-    color: '#4F46E5',
     fontWeight: 'bold',
   },
   mediaButton: {
@@ -253,47 +319,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   sendButton: {
-    backgroundColor: '#4F46E5',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 16,
   },
   sendButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  messageBubble: {
-    backgroundColor: '#EEF2FF',
-    padding: 10,
-    borderRadius: 20,
-    marginBottom: 8,
-    maxWidth: '80%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-  },
-  messageText: {
-    flex: 1,
-    color: '#111827',
-  },
-  iconGroup: {
-    flexDirection: 'row',
-    marginLeft: 10,
-  },
-  icon: {
-    marginLeft: 8,
-  },
-  addButton: {
-    backgroundColor: '#E0E7FF',
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  addButtonText: {
-    color: '#4F46E5',
     fontWeight: '600',
   },
   bubbleTail: {
@@ -303,8 +334,11 @@ const styles = StyleSheet.create({
     width: 0,
     height: 0,
     borderTopWidth: 10,
-    borderTopColor: '#E0E7FF',
     borderLeftWidth: 10,
     borderLeftColor: 'transparent',
+  },
+  bannerContainer: {
+    alignItems: 'center',
+    marginVertical: 8,
   },
 });

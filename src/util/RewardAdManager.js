@@ -1,59 +1,60 @@
-// RewardAdManager.js (snippet)
 import {
   RewardedAd,
   RewardedAdEventType,
   TestIds,
 } from 'react-native-google-mobile-ads';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import functions from '@react-native-firebase/functions';
 
-const adUnitId = __DEV__ ? TestIds.REWARDED : 'ca-app-pub-xxxxx/yyyyy';
+// 👇 Replace with your real ad unit ID from AdMob console
+const adUnitId = __DEV__
+  ? TestIds.REWARDED
+  : 'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
 
-export function showRewardedAd() {
-  const ad = RewardedAd.createForAdRequest(adUnitId);
-  ad.load();
+let rewardedAd = null;
 
+export const preloadRewardedAd = () => {
+  rewardedAd = RewardedAd.createForAdRequest(adUnitId, {
+    requestNonPersonalizedAdsOnly: true,
+  });
+
+  rewardedAd.load();
+};
+
+export const showRewardedAd = () => {
   return new Promise((resolve, reject) => {
-    const unsubscribe = ad.onAdEvent(async (type, error, reward) => {
-      if (type === RewardedAdEventType.LOADED) {
-        ad.show();
-      } else if (type === RewardedAdEventType.EARNED_REWARD) {
-        // add 10 credits + set campaignAccess unlocked and expiresAt (24h)
-        const uid = auth().currentUser?.uid;
-        if (!uid) {
-          unsubscribe();
-          return reject(new Error('No user'));
-        }
+    if (!rewardedAd) {
+      reject(new Error('Rewarded ad not loaded'));
+      return;
+    }
+
+    const unsubscribe = rewardedAd.addAdEventListener(
+      RewardedAdEventType.EARNED_REWARD,
+      async reward => {
+        console.log('🎉 User earned reward:', reward);
+
         try {
-          await firestore()
-            .collection('users')
-            .doc(uid)
-            .set(
-              {
-                rewards: {
-                  credits: firestore.FieldValue.increment(10),
-                  campaignAccess: {
-                    unlocked: true,
-                    expiresAt: firestore.Timestamp.fromMillis(
-                      Date.now() + 24 * 60 * 60 * 1000,
-                    ),
-                  },
-                },
-              },
-              {merge: true},
-            );
-          resolve();
+          // Call Firebase function to securely add points
+          const result = await functions().httpsCallable('claimRewardPoints')({
+            adType: 'rewarded',
+          });
+
+          console.log('✅ Points updated:', result.data.points);
+          resolve(result.data.points);
         } catch (e) {
+          console.error('❌ Failed to claim reward points:', e);
           reject(e);
-        } finally {
-          unsubscribe();
         }
-      } else if (type === RewardedAdEventType.CLOSED) {
-        unsubscribe();
-      } else if (error) {
-        unsubscribe();
-        reject(error);
-      }
+      },
+    );
+
+    rewardedAd.addAdEventListener(RewardedAdEventType.CLOSED, () => {
+      unsubscribe();
+      loadRewardedAd(); // preload next ad
+    });
+
+    rewardedAd.show().catch(err => {
+      console.error('Ad failed to show:', err);
+      reject(err);
     });
   });
-}
+};

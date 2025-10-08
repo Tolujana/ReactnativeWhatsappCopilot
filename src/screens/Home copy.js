@@ -1,17 +1,18 @@
-import React from 'react';
-import {ScrollView, StyleSheet, View, useWindowDimensions} from 'react-native';
+import React, {useEffect, useState} from 'react';
 import {
-  Text,
-  Surface,
-  useTheme,
-  Button as PaperButton,
-} from 'react-native-paper';
+  Button,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import {Text, Surface, useTheme, IconButton} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, {FadeInDown} from 'react-native-reanimated';
 import {useNavigation} from '@react-navigation/native';
 import {getAuth, signOut} from '@react-native-firebase/auth';
 import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
-import Header from '../components/Header';
+import {getPoints, preloadRewardedAd, showRewardedAd} from '../util/data';
 
 const MENU_ITEMS = {
   'Bulk Messaging': [
@@ -102,31 +103,54 @@ export default function Home({toggleTheme}) {
   const {width} = useWindowDimensions();
   const cardWidth = (width - 48) / 3; // 3 items per row with spacing
   const theme = useTheme();
+  const [points, setPoints] = useState(0);
+
+  const fetchPoints = async () => {
+    const currentPoints = await getPoints();
+    setPoints(currentPoints);
+  };
+
+  const handleWatchAd = async () => {
+    try {
+      const reward = await showRewardedAd();
+      setPoints(reward.balance);
+    } catch (e) {
+      console.warn('Failed to show rewarded ad', e);
+    }
+  };
+
+  useEffect(() => {
+    preloadRewardedAd();
+    fetchPoints();
+  }, []);
 
   return (
     <ScrollView
       style={[styles.container, {backgroundColor: theme.colors.background}]}>
-      <Header toggleTheme={toggleTheme} showBackButton={false} />
-      <PaperButton
-        onPress={signOutAnonymous}
-        mode="contained"
-        style={styles.signOutButton}>
-        Sign Out
-      </PaperButton>
+      <View style={styles.header}>
+        <Text style={styles.pointsText}>Points: {points}</Text>
+        <View style={styles.headerButtons}>
+          <IconButton icon="theme-light-dark" onPress={toggleTheme} />
+          <IconButton icon="video" onPress={handleWatchAd} />
+        </View>
+      </View>
+      <Button title="Sign Out" onPress={signOutAnonymous} color="#ff4444" />
 
       {Object.entries(MENU_ITEMS).map(([category, items], index) => (
         <View key={index}>
-          <View style={styles.bannerContainer}>
-            <BannerAd
-              unitId="ca-app-pub-3940256099942544/6300978111"
-              size={BannerAdSize.BANNER}
-            />
-          </View>
           <CategorySection
             title={category}
             items={items}
             cardWidth={cardWidth}
           />
+          {index === 0 && (
+            <View style={styles.bannerContainer}>
+              <BannerAd
+                unitId="ca-app-pub-3940256099942544/6300978111"
+                size={BannerAdSize.BANNER}
+              />
+            </View>
+          )}
         </View>
       ))}
     </ScrollView>
@@ -139,8 +163,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
   },
-  signOutButton: {
-    marginBottom: 16,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pointsText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  headerButtons: {
+    flexDirection: 'row',
   },
   categorySection: {
     marginBottom: 24,
@@ -170,6 +204,6 @@ const styles = StyleSheet.create({
   },
   bannerContainer: {
     alignItems: 'center',
-    marginVertical: 8,
+    marginVertical: 16,
   },
 });

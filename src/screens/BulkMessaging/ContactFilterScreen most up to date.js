@@ -2,84 +2,61 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   View,
   Text,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  DeviceEventEmitter,
   ScrollView,
 } from 'react-native';
-import {
-  Checkbox,
-  DataTable,
-  useTheme,
-  ActivityIndicator,
-} from 'react-native-paper';
+import CheckBox from '@react-native-community/checkbox'; // Or your preferred checkbox lib
 import {
   checkAccessibilityPermission,
   checkOverlayPermission,
   launchWhatsappMessage,
   openOverlaySettings,
-} from '../../util/WhatsappHelper';
+} from '../../util/WhatsappHelper'; // You'll create this helper
 import {
   getContactsByCampaignId,
-  getPoints,
   insertSentMessage,
   preloadRewardedAd,
   reservePointsForMessagesByIds,
   showRewardedAd,
 } from '../../util/data';
 import {NativeModules} from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import useWhatsappReportListener from '../../util/UseWhatsappReporter';
+import {Checkbox, DataTable} from 'react-native-paper';
+import {MyDataTable} from '../../components/DataTable';
 import MessageEditorModal from '../../components/MessageEditor';
-import {BannerAd, BannerAdSize, TestIds} from 'react-native-google-mobile-ads';
 
-const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
-  const theme = useTheme();
+const ContactFilterScreen = ({navigation, route}) => {
   const {campaign, message, media} = route.params;
   const [isSending, setIsSending] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState({});
-  const [templateList, setTemplateList] = useState({});
-  const [selectedEditorContacts, setSelectedEditorContacts] = useState([]);
-  const [editingMessages, setEditingMessages] = useState([]);
+  const [messages, setMessages] = useState([]); // default/global message array
+  const [templateList, setTemplateList] = useState({}); // { contactId: [msg1, msg2, ...] }
+  const [selectedEditorContacts, setSelectedEditorContacts] = useState([]); // contacts being edited
+  const [editingMessages, setEditingMessages] = useState([]); // current messages sho
   const [isModalVisible, setIsModalVisible] = useState(false);
   const {AccessibilityHelper} = NativeModules;
   const [needsHelp, setNeedsHelp] = useState(false);
   const [whatsappPackage, setWhatsappPackage] = useState('com.whatsapp');
   const [loading, setLoading] = useState(true);
-  const [points, setPoints] = useState(0);
-
-  // Your actual ad unit IDs (replace with your own)
-  const AD_UNIT_TOP = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
-  const AD_UNIT_BOTTOM = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
-
   const openSettings = () => {
     AccessibilityHelper.openAccessibilitySettings();
   };
 
   const openEditorForContacts = contactsToEdit => {
+    console.log(contactsToEdit, 'filer contacts');
     const baseMessages = templateList[contactsToEdit[0]] || message;
+    console.log('editsmessage', baseMessages);
     setEditingMessages(baseMessages);
     setSelectedEditorContacts(contactsToEdit);
     setIsModalVisible(true);
   };
-
-  const fetchPoints = async () => {
-    try {
-      const currentPoints = await getPoints();
-      setPoints(currentPoints);
-    } catch (e) {
-      console.warn('Failed to fetch points', e);
-      setPoints(0);
-    }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchPoints();
-      preloadRewardedAd();
-    }, []),
-  );
-
+  console.log('this is message', message);
+  console.log('selectedContacts', selectedContacts);
   useEffect(() => {
     const fetchContacts = async () => {
       try {
@@ -99,6 +76,10 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     };
     fetchContacts();
   }, [campaign.id]);
+
+  useEffect(() => {
+    preloadRewardedAd();
+  }, []);
 
   const toggleSelect = useCallback(contactId => {
     if (!contactId) return;
@@ -121,6 +102,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     const contactsToSend = contacts.filter(
       contact => selectedContacts[contact.id],
     );
+    console.log('Filtered contacts:', contactsToSend);
 
     if (contactsToSend.length === 0) {
       Alert.alert('No Contacts', 'Please select at least one contact.');
@@ -132,10 +114,10 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
 
     const tryReserveAndSend = async () => {
       try {
-        const messageId = await insertSentMessage(
-          [{message}],
-          new Date().toISOString(),
-        );
+        const newBalance = await reservePointsForMessagesByIds(selectedIds);
+
+        // ✅ Save the raw message draft once before any replacement
+        insertSentMessage([{message}], new Date().toISOString());
 
         function replaceContactPlaceholders(template, contact) {
           const replacements = {
@@ -144,14 +126,10 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
           };
 
           if (contact.extra_field) {
-            try {
-              const extrafield = JSON.parse(contact.extra_field);
-              Object.keys(extrafield).forEach(key => {
-                replacements[`{{${key}}}`] = extrafield[key] || '';
-              });
-            } catch (e) {
-              console.warn('Failed to parse extra_field:', e);
-            }
+            const extrafield = JSON.parse(contact.extra_field);
+            Object.keys(extrafield).forEach(key => {
+              replacements[`{{${key}}}`] = extrafield[key] || '';
+            });
           }
 
           const delimiter = '$@#__DELIMITER__#@%';
@@ -163,7 +141,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
               'Text is too long. Please reduce the message size.',
             );
             setIsSending(false);
-            return null;
+            return template;
           }
 
           let replacedString = joinedString;
@@ -177,34 +155,23 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
           return replacedString.split(delimiter).map(segment => segment.trim());
         }
 
-        const personalizedMessages = contactsToSend
-          .map(contact => {
-            const messages = replaceContactPlaceholders(
-              templateList[contact.id] || message,
-              contact,
-            );
-            if (!messages) return null;
-            return {
-              phone: contact.phone,
-              message: messages,
-              name: contact.name,
-              mediaPath: contact.mediaPath,
-            };
-          })
-          .filter(msg => msg !== null);
+        const personalizedMessages = contactsToSend.map(contact => ({
+          phone: contact.phone,
+          message: replaceContactPlaceholders(
+            templateList[contact.id] || message,
+            contact,
+          ),
+          name: contact.name,
+          mediaPath: contact.mediaPath,
+        }));
 
-        if (personalizedMessages.length === 0) {
-          Alert.alert('Error', 'No valid messages could be generated.');
-          setIsSending(false);
-          return;
-        }
+        console.log('Personalized messages:', personalizedMessages);
 
-        const goToResultScreen = () => {
+        const goToResultScreen = () =>
           navigation.navigate('WhatsappResultScreen', {
             totalContacts: personalizedMessages,
             whatsappPackage,
           });
-        };
 
         if (needsHelp) {
           const enabled = await checkAccessibilityPermission();
@@ -221,8 +188,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
             setIsSending(false);
             return;
           }
-          const newBalance = await reservePointsForMessagesByIds(selectedIds);
-          setPoints(newBalance);
+
           launchWhatsappMessage(personalizedMessages, whatsappPackage);
           goToResultScreen();
           setIsSending(false);
@@ -253,11 +219,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
               },
               {
                 text: 'Send Manually',
-                onPress: async () => {
-                  const newBalance = await reservePointsForMessagesByIds(
-                    selectedIds,
-                  );
-                  setPoints(newBalance);
+                onPress: () => {
                   launchWhatsappMessage(personalizedMessages, whatsappPackage);
                   goToResultScreen();
                   setIsSending(false);
@@ -284,18 +246,11 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
                     const reward = await showRewardedAd();
                     Alert.alert(
                       'Points earned!',
-                      `You earned ${reward.amount} points. New balance: ${reward.balance}. Retrying...`,
+                      `You earned ${reward.amount} points. Retrying...`,
                     );
-                    await fetchPoints();
+                    await tryReserveAndSend();
                   } catch (adErr) {
-                    if (adErr.code === 'REWARD_SAVE_ERR') {
-                      Alert.alert(
-                        'Error',
-                        'Failed to save points to database. Please try again.',
-                      );
-                    } else {
-                      Alert.alert('Ad failed', String(adErr.message || adErr));
-                    }
+                    Alert.alert('Ad failed', String(adErr.message || adErr));
                     setIsSending(false);
                   }
                 },
@@ -303,7 +258,6 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
             ],
           );
         } else {
-          console.error('Error in tryReserveAndSend:', e);
           Alert.alert('Error', String(e.message || e));
           setIsSending(false);
         }
@@ -324,92 +278,73 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   };
 
   const saveEditedMessages = input => {
+    console.log(
+      'saveEditedMessages called with input:',
+      selectedEditorContacts,
+    );
     const updated = {...templateList};
     selectedEditorContacts.forEach(id => {
       updated[id] = input;
     });
     setTemplateList(updated);
+
     setEditingMessages([]);
+  };
+
+  const renderContact = ({item}) => {
+    const isChecked = !!selectedContacts[item.id];
+
+    return (
+      <TouchableOpacity
+        style={styles.contactItem}
+        onPress={() => toggleSelect(item.id)}>
+        <Checkbox
+          status={isChecked ? 'checked' : 'unchecked'}
+          onPress={() => toggleSelect(item.id)}
+          color="#4F46E5"
+        />
+        <Text style={styles.contactText}>
+          {item.name} ({item.phone})
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {
     return (
-      <View
-        style={[styles.container, {backgroundColor: theme.colors.background}]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={[styles.loadingText, {color: theme.colors.onBackground}]}>
-          Loading contacts...
-        </Text>
+      <View style={styles.container}>
+        <Text>Loading...</Text>
       </View>
     );
   }
-
   return (
-    <View
-      style={[styles.container, {backgroundColor: theme.colors.background}]}>
-      {/* Top Banner Ad */}
-      <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={AD_UNIT_TOP}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-          onAdLoaded={() => console.log('Top banner ad loaded')}
-          onAdFailedToLoad={error =>
-            console.log('Top banner ad failed to load: ', error)
-          }
-        />
-      </View>
-
-      <Text style={[styles.header, {color: theme.colors.onBackground}]}>
-        Select Contacts
-      </Text>
-
-      <View
-        style={[
-          styles.pointsContainer,
-          {backgroundColor: theme.colors.surfaceVariant},
-        ]}>
-        <Text
-          style={[styles.pointsText, {color: theme.colors.onSurfaceVariant}]}>
-          💰 Points: {points}
-        </Text>
-      </View>
-
-      <ScrollView style={styles.scrollView}>
+    <View style={styles.container}>
+      <Text style={styles.header}>Select Contacts</Text>
+      {/* {MyDataTable(contacts, Object.keys(selectedContacts), toggleSelect)} */}
+      <ScrollView
+        style={{maxHeight: 400}}
+        contentContainerStyle={{paddingBottom: 10}}>
         <DataTable>
-          <DataTable.Header
-            style={[
-              styles.tableHeader,
-              {backgroundColor: theme.colors.surfaceVariant},
-            ]}>
+          <DataTable.Header style={styles.tableHeader}>
             <DataTable.Title style={{flex: 0.5, justifyContent: 'center'}}>
-              <View style={styles.checkboxContainer}>
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 4,
+                }}>
                 <Checkbox
                   status={areAllSelected ? 'checked' : 'unchecked'}
                   onPress={toggleSelectAll}
-                  color={theme.colors.primary}
+                  color="#4F46E5"
+                  style={{transform: [{scaleX: 0.9}, {scaleY: 0.9}]}} // optional resize
                 />
               </View>
             </DataTable.Title>
-            <DataTable.Title style={{flex: 1}}>
-              <Text
-                style={[styles.tableTitle, {color: theme.colors.onSurface}]}>
-                👤 Name
-              </Text>
-            </DataTable.Title>
-            <DataTable.Title style={{flex: 2}}>
-              <Text
-                style={[styles.tableTitle, {color: theme.colors.onSurface}]}>
-                📱 Number
-              </Text>
-            </DataTable.Title>
+            <DataTable.Title style={{flex: 1}}>👤 Name</DataTable.Title>
+            <DataTable.Title style={{flex: 2}}>📱 Number</DataTable.Title>
             <DataTable.Title style={{flex: 1.5}}>
-              <Text
-                style={[styles.tableTitle, {color: theme.colors.onSurface}]}>
-                💬 Edit Message
-              </Text>
+              💬 Edit Message
             </DataTable.Title>
           </DataTable.Header>
 
@@ -419,43 +354,25 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
               <DataTable.Row
                 key={contact.id}
                 onPress={() => toggleSelect(contact.id)}
-                style={[styles.row, {borderBottomColor: theme.colors.outline}]}>
+                style={styles.row}>
                 <DataTable.Cell style={{flex: 0.5}}>
                   <Checkbox
                     status={isChecked ? 'checked' : 'unchecked'}
                     onPress={() => toggleSelect(contact.id)}
-                    color={theme.colors.primary}
+                    color="#4F46E5"
                   />
                 </DataTable.Cell>
                 <DataTable.Cell style={{flex: 1}}>
-                  <Text
-                    style={[
-                      styles.contactText,
-                      {color: theme.colors.onSurface},
-                    ]}>
-                    {contact.name}
-                  </Text>
+                  {contact.name}
                 </DataTable.Cell>
                 <DataTable.Cell style={{flex: 2}}>
-                  <Text
-                    style={[
-                      styles.contactText,
-                      {color: theme.colors.onSurface},
-                    ]}>
-                    {contact.phone}
-                  </Text>
+                  {contact.phone}
                 </DataTable.Cell>
                 <DataTable.Cell style={{flex: 1.5}}>
+                  {' '}
                   <TouchableOpacity
-                    onPress={() => openEditorForContacts([contact.id])}
-                    style={styles.editButton}>
-                    <Text
-                      style={[
-                        styles.editButtonText,
-                        {color: theme.colors.primary},
-                      ]}>
-                      ✏️ Edit
-                    </Text>
+                    onPress={() => openEditorForContacts([contact.id])}>
+                    <Text style={{color: '#4F46E5'}}>✏️ Edit</Text>
                   </TouchableOpacity>
                 </DataTable.Cell>
               </DataTable.Row>
@@ -463,13 +380,8 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
           })}
         </DataTable>
       </ScrollView>
-
-      {/* Edit Selected Messages Button */}
       <TouchableOpacity
-        style={[
-          styles.secondaryButton,
-          {backgroundColor: theme.colors.secondaryContainer},
-        ]}
+        style={styles.sendButton}
         onPress={() =>
           openEditorForContacts(
             Object.entries(selectedContacts)
@@ -477,99 +389,60 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
               .map(([key]) => key),
           )
         }>
-        <Text
-          style={[
-            styles.secondaryButtonText,
-            {color: theme.colors.onSecondaryContainer},
-          ]}>
-          ✏️ Edit Selected Messages
-        </Text>
+        <Text style={styles.sendButtonText}>Edit selected Messages</Text>
       </TouchableOpacity>
-
-      {/* WhatsApp Type Selection */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, {color: theme.colors.onBackground}]}>
+      <View style={{marginTop: 16}}>
+        <Text style={{fontWeight: 'bold', marginBottom: 4}}>
           Select WhatsApp Type
         </Text>
-        <View style={styles.whatsappOptions}>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <TouchableOpacity
-            style={styles.option}
+            style={{
+              marginRight: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
             onPress={() => setWhatsappPackage('com.whatsapp')}>
             <Checkbox
               status={
                 whatsappPackage === 'com.whatsapp' ? 'checked' : 'unchecked'
               }
               onPress={() => setWhatsappPackage('com.whatsapp')}
-              color={theme.colors.primary}
+              color="#4F46E5"
             />
-            <Text style={[styles.optionText, {color: theme.colors.onSurface}]}>
-              Normal WhatsApp
-            </Text>
+            <Text style={{marginLeft: 4}}>Normal WhatsApp</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.option}
+            style={{flexDirection: 'row', alignItems: 'center'}}
             onPress={() => setWhatsappPackage('com.whatsapp.w4b')}>
             <Checkbox
               status={
                 whatsappPackage === 'com.whatsapp.w4b' ? 'checked' : 'unchecked'
               }
               onPress={() => setWhatsappPackage('com.whatsapp.w4b')}
-              color={theme.colors.primary}
+              color="#4F46E5"
             />
-            <Text style={[styles.optionText, {color: theme.colors.onSurface}]}>
-              WhatsApp Business
-            </Text>
+            <Text style={{marginLeft: 4}}>WhatsApp Business</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Help Option */}
-      <View
-        style={[
-          styles.helpSection,
-          {backgroundColor: theme.colors.surfaceVariant},
-        ]}>
+      <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 16}}>
         <Checkbox
           status={needsHelp ? 'checked' : 'unchecked'}
           onPress={() => setNeedsHelp(!needsHelp)}
-          color={theme.colors.primary}
+          color="#4F46E5"
         />
-        <Text style={[styles.helpText, {color: theme.colors.onSurfaceVariant}]}>
+        <Text style={{marginLeft: 8, flexWrap: 'wrap'}}>
           I need additional help with sending messages (automated mode)
         </Text>
       </View>
-
-      {/* Main Send Button */}
-      <TouchableOpacity
-        style={[styles.sendButton, {backgroundColor: theme.colors.primary}]}
-        onPress={handleSendMessages}
-        disabled={isSending}>
-        <Text style={[styles.sendButtonText, {color: theme.colors.onPrimary}]}>
-          {isSending
-            ? 'Sending...'
-            : needsHelp
-            ? 'Send Messages Automatically'
-            : 'Send Messages Manually'}
+      <TouchableOpacity style={styles.sendButton} onPress={handleSendMessages}>
+        <Text style={styles.sendButtonText}>
+          {needsHelp ? 'Send Messages' : 'Send Messages Manually'}
         </Text>
       </TouchableOpacity>
-
-      {/* Bottom Banner Ad */}
-      <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={AD_UNIT_BOTTOM}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-          onAdLoaded={() => console.log('Bottom banner ad loaded')}
-          onAdFailedToLoad={error =>
-            console.log('Bottom banner ad failed to load: ', error)
-          }
-        />
-      </View>
-
-      {/* Message Editor Modal */}
       {isModalVisible && (
         <MessageEditorModal
           isModalVisible={isModalVisible}
@@ -585,120 +458,42 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   );
 };
 
+export default ContactFilterScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
   },
-  bannerContainer: {
-    marginBottom: 6,
-    alignItems: 'center',
-  },
   header: {
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  pointsContainer: {
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  pointsText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  scrollView: {
-    maxHeight: 400,
     marginBottom: 16,
   },
-  tableHeader: {
-    height: 56,
+  contactItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 0,
-  },
-  tableTitle: {
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  checkboxContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-  },
-  row: {
-    borderBottomWidth: 1,
+    paddingVertical: 8,
   },
   contactText: {
-    fontSize: 14,
+    marginLeft: 10,
+    fontSize: 16,
   },
-  editButton: {
-    padding: 4,
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  secondaryButton: {
+  sendButton: {
+    backgroundColor: '#4F46E5',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  secondaryButtonText: {
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  section: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  whatsappOptions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 24,
-  },
-  optionText: {
-    marginLeft: 4,
-    fontSize: 14,
-  },
-  helpSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  helpText: {
-    marginLeft: 8,
-    fontSize: 14,
-    flex: 1,
-  },
-  sendButton: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 16,
+    marginTop: 20,
   },
   sendButtonText: {
+    color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    textAlign: 'center',
+  tableHeader: {
+    backgroundColor: '#e0e0e0',
+    height: 56, // Increase from default (approx 48)
+    alignItems: 'center',
+    paddingVertical: 0,
   },
 });
-
-export default ContactFilterScreen;

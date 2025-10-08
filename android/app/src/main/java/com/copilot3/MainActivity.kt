@@ -1,38 +1,45 @@
 package com.copilot3
-import android.content.Intent // ✅
+
+import android.content.Intent
+import android.os.Bundle // Add for onCreate
+import android.util.Log // Add for logging
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.ReactApplication
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
-import com.facebook.react.ReactApplication
+import com.google.android.gms.ads.MobileAds // Add for AdMob
+// Add for splash screen (if used)
 
 class MainActivity : ReactActivity() {
 
-  /**
-   * Returns the name of the main component registered from JavaScript. This is used to schedule
-   * rendering of the component.
-   */
-  override fun getMainComponentName(): String = "copilot3"
+    override fun getMainComponentName(): String = "copilot3"
 
-  /**
-   * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
-   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
-   */
-  override fun createReactActivityDelegate(): ReactActivityDelegate =
-      DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+    override fun createReactActivityDelegate(): ReactActivityDelegate =
+        DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
-       override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-    super.onActivityResult(requestCode, resultCode, data)
+    override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)  
+        try {
+            
+            MobileAds.initialize(this) { initializationStatus ->
+                Log.d("MainActivity", "AdMob initialized: $initializationStatus")
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error in onCreate: ${e.message}")
+            // Optionally, handle the error gracefully or rethrow for debugging
+        }
+    }
 
-    val reactInstanceManager = (application as ReactApplication)
-      .reactNativeHost
-      .reactInstanceManager
-
-    reactInstanceManager.onActivityResult(this, requestCode, resultCode, data)
-  }
-
-
-
-}      
-
-
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        try {
+            val reactInstanceManager = (application as ReactApplication)
+                .reactNativeHost
+                .reactInstanceManager
+            reactInstanceManager.onActivityResult(this, requestCode, resultCode, data)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error in onActivityResult: ${e.message}")
+        }
+    }
+}

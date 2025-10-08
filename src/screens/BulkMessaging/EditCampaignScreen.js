@@ -1,16 +1,18 @@
 import React, {useEffect, useState} from 'react';
-import {View, StyleSheet} from 'react-native';
-import {TextInput, Button, Text} from 'react-native-paper';
+import {View, StyleSheet, ScrollView} from 'react-native';
+import {TextInput, Button, Text, useTheme, Surface} from 'react-native-paper';
 import {
   getContactsByCampaignId,
   updateCampaign,
   deleteContact,
-} from '../../util/database';
+} from '../../util/data';
 import ContactSelectionScreen from './ContactSelectionScreen';
 import Animated, {FadeInDown} from 'react-native-reanimated';
+import Header from '../../components/Header';
 
-export default function EditCampaignScreen({route, navigation}) {
+export default function EditCampaignScreen({route, navigation, toggleTheme}) {
   const {campaign} = route.params;
+  const theme = useTheme();
 
   const [name, setName] = useState(campaign.name);
   const [description, setDescription] = useState(campaign.description);
@@ -36,12 +38,17 @@ export default function EditCampaignScreen({route, navigation}) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={[styles.container, {backgroundColor: theme.colors.background}]}
+      contentContainerStyle={{paddingBottom: 40}}>
+      <Header toggleTheme={toggleTheme} showBackButton={true} />
+
       <Animated.View entering={FadeInDown.duration(400)}>
         <Button
           mode="outlined"
           onPress={() => setShowForm(prev => !prev)}
-          style={styles.toggleButton}>
+          style={styles.toggleButton}
+          textColor={theme.colors.primary}>
           {showForm ? 'Hide Campaign Details' : 'Edit Campaign Details'}
         </Button>
       </Animated.View>
@@ -54,6 +61,7 @@ export default function EditCampaignScreen({route, navigation}) {
             onChangeText={setName}
             mode="outlined"
             style={styles.input}
+            theme={{colors: {primary: theme.colors.primary}}}
           />
           <TextInput
             label="Description"
@@ -63,6 +71,7 @@ export default function EditCampaignScreen({route, navigation}) {
             multiline
             numberOfLines={3}
             style={styles.input}
+            theme={{colors: {primary: theme.colors.primary}}}
           />
           <Button
             mode="contained"
@@ -76,33 +85,56 @@ export default function EditCampaignScreen({route, navigation}) {
       <Animated.View
         entering={FadeInDown.delay(300).duration(400)}
         style={styles.contactHeader}>
-        <Text variant="titleMedium">Contacts:</Text>
+        <Text
+          variant="titleMedium"
+          style={{
+            color: theme.colors.primary,
+            fontWeight: '600',
+            marginBottom: 4,
+          }}>
+          Contacts:
+        </Text>
       </Animated.View>
 
-      <ContactSelectionScreen
-        campaignData={{campaign}}
-        onDeleteContact={handleDeleteContact}
-      />
-    </View>
+      <Surface
+        style={[
+          styles.contactContainer,
+          {backgroundColor: theme.colors.background},
+        ]}
+        elevation={2}>
+        <ContactSelectionScreen
+          campaignData={{campaign}}
+          onDeleteContact={handleDeleteContact}
+        />
+      </Surface>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#FAFAFA',
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   toggleButton: {
     marginBottom: 16,
+    borderRadius: 8,
   },
   input: {
     marginBottom: 12,
   },
   saveBtn: {
-    marginBottom: 20,
+    marginBottom: 24,
+    borderRadius: 8,
   },
   contactHeader: {
-    marginBottom: 12,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  contactContainer: {
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 24,
   },
 });

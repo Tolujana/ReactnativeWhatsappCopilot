@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "563969099998-o4nftj84b68sp14vvbb42egmisflt4rl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.copilot3",
+            "certificate_hash": "7fe6fe671cc54fe3654d1c0c71917f154ab65af9"
+          }
+        },
+        {
+          "client_id": "563969099998-ula21hot44th841cfq1nb1d86mepqt41.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.copilot3",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
           "client_id": "563969099998-es1mllnbgqn0hbc60q2j6q46g7dq1itb.apps.googleusercontent.com",
           "client_type": 3
         }

@@ -5,11 +5,12 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  Alert,
 } from 'react-native';
 import {Text, Checkbox, Button} from 'react-native-paper';
 import Contacts from 'react-native-contacts';
 import {openPicker} from '../util/AccessibilityService';
-import {insertContact} from '../util/database';
+import {insertContact, preloadRewardedAd, showRewardedAd} from '../util/data';
 
 export default function ContactSelectScreen({navigation, route}) {
   const {campaign} = route.params;
@@ -22,6 +23,7 @@ export default function ContactSelectScreen({navigation, route}) {
   console.log('this contactSelectionScreen campaign', campaign);
   useEffect(() => {
     setIsLoading(true);
+    preloadRewardedAd();
     Contacts.checkPermission().then(permission => {
       if (permission === 'undefined' || permission === 'denied') {
         setPermissionError(true);
@@ -52,76 +54,11 @@ export default function ContactSelectScreen({navigation, route}) {
     }));
   };
 
-  const handleDone1 = () => {
-    const selectedContacts = filteredContacts
-      .filter(
-        c =>
-          selected[c.recordID] &&
-          Object.values(selected[c.recordID]).includes(true),
-      )
-      .map(c => ({
-        fullName: formatContactName(c),
-        numbers: c.phoneNumbers
-          .filter((_, index) => selected[c.recordID]?.[index])
-          .map(phone => phone.number.replace(/\s+/g, '')),
-      }));
-    if (onDone) onDone(selectedContacts);
-    navigation.goBack();
-  };
-  const handleDone2 = async () => {
-    const selectedContacts = filteredContacts
-      .map(contact => {
-        const name = formatContactName(contact);
-        const selections = selected[contact.recordID];
-
-        if (!selections) return null;
-
-        const selectedNumbers = contact.phoneNumbers
-          .filter((_, index) =>
-            selections[-1] === true ? true : selections[index],
-          )
-          .map(p => p.number.replace(/\s+/g, ''));
-
-        if (selectedNumbers.length === 0) return null;
-
-        return selectedNumbers.map(number => ({
-          fullName: name,
-          number,
-        }));
-      })
-      .filter(Boolean)
-      .flat(); // Flatten array of arrays
-
-    // Insert into database before navigating back
-    const insertions = allContacts.map(c => {
-      if (c.fullName && c.number) {
-        return new Promise(resolve => {
-          insertContact(route.params.campaign.id, c.fullName, c.number, () =>
-            resolve(),
-          );
-        });
-      }
-      return Promise.resolve();
-    });
-
-    await Promise.all(insertions);
-
-    if (route.params.fetchContacts) {
-      route.params.fetchContacts(); // Refresh contact list if passed in
-    }
-
-    if (route.params.setContactSelectorModalVisible) {
-      route.params.setContactSelectorModalVisible(false);
-    }
-
-    navigation.goBack();
-  };
   const handleDone = async () => {
     const selectedContacts = allContacts
       .map(contact => {
         const name = formatContactName(contact);
         const selections = selected[contact.recordID];
-
         if (!selections) return null;
 
         const selectedNumbers = contact.phoneNumbers
@@ -138,37 +75,160 @@ export default function ContactSelectScreen({navigation, route}) {
         }));
       })
       .filter(Boolean)
-      .flat(); // Flatten array of arrays
+      .flat();
 
-    const insertions = selectedContacts.map(c => {
-      if (c.fullName && c.number) {
-        return new Promise(resolve => {
-          try {
-            console.log('things', campaign.id, c.fullName, c.number);
-            insertContact(campaign.id, c.fullName, c.number, [], () =>
-              resolve(),
-            );
-          } catch (e) {
-            console.error('Insert failed:', e);
-            resolve(); // Ensure it doesn’t block
-          }
-        });
+    let allInserted = true;
+
+    const tryInsertContact = async contact => {
+      try {
+        console.log(
+          '📩 Inserting:',
+          campaign.id,
+          contact.fullName,
+          contact.number,
+        );
+        const result = await insertContact(
+          campaign.id,
+          contact.fullName,
+          contact.number,
+          {},
+        );
+        console.log('✅ Insert result:', result);
+        return true;
+      } catch (e) {
+        const msg = String(e.code || e.message || '');
+        if (msg.includes('INSUFFICIENT_POINTS')) {
+          allInserted = false; // stop further inserts
+
+          Alert.alert(
+            'Not enough points',
+            'Watch a rewarded ad to earn points and continue?',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {
+                text: 'Watch Ad',
+                onPress: async () => {
+                  try {
+                    console.log('🎬 Showing ad...');
+                    const reward = await showRewardedAd();
+                    Alert.alert(
+                      'Points earned!',
+                      `You earned ${
+                        reward.amount || reward
+                      } points. Retrying...`,
+                    );
+                    await tryInsertContact(contact); // retry the failed one
+                    await insertRemainingContacts(selectedContacts, contact); // retry the rest
+                  } catch (adErr) {
+                    Alert.alert('Ad failed', String(adErr?.message || adErr));
+                  }
+                },
+              },
+            ],
+          );
+
+          return false;
+        } else {
+          // Some other error — just log and continue
+          return false;
+        }
       }
-      return Promise.resolve();
-    });
+    };
 
-    await Promise.all(insertions);
+    const insertRemainingContacts = async (contacts, startFrom) => {
+      const startIndex = contacts.findIndex(
+        c => c.fullName === startFrom.fullName && c.number === startFrom.number,
+      );
+      const rest = contacts.slice(startIndex + 1);
+      for (const c of rest) {
+        await tryInsertContact(c);
+      }
 
-    if (route.params.fetchContacts) {
-      route.params.fetchContacts(); // Refresh contact list if passed in
+      // ✅ Refresh + close only after successful retry
+      if (route.params.fetchContacts) {
+        route.params.fetchContacts();
+      }
+      if (route.params.setContactSelectorModalVisible) {
+        route.params.setContactSelectorModalVisible(false);
+      }
+      navigation.goBack();
+    };
+
+    // 👇 Insert contacts sequentially (so we can stop if out of points)
+    for (const c of selectedContacts) {
+      const success = await tryInsertContact(c);
+      if (!success) break;
     }
 
-    if (route.params.setContactSelectorModalVisible) {
-      route.params.setContactSelectorModalVisible(false);
+    // ✅ If everything inserted successfully the first time, then navigate
+    if (allInserted) {
+      if (route.params.fetchContacts) {
+        route.params.fetchContacts();
+      }
+      if (route.params.setContactSelectorModalVisible) {
+        route.params.setContactSelectorModalVisible(false);
+      }
+      navigation.goBack();
     }
-
-    navigation.goBack();
   };
+
+  const requestContactsPermission = async () => {
+    try {
+      setIsLoading(true);
+      const permission = await Contacts.requestPermission();
+
+      if (permission === 'authorized') {
+        // Permission granted, load contacts
+        await loadContacts();
+      } else {
+        // Permission denied, show error and option to open settings
+        setPermissionError(true);
+        Alert.alert(
+          'Permission Required',
+          'Contacts permission is required to select contacts. Would you like to open app settings to enable it?',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              },
+            },
+          ],
+        );
+      }
+    } catch (err) {
+      console.warn('Error requesting contacts permission:', err);
+      setPermissionError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  const openAppSettings = () => {
+    if (Platform.OS === 'ios') {
+      Linking.openURL('app-settings:');
+    } else {
+      Linking.openSettings();
+    }
+  };
+
+  const renderPermissionDeniedView = () => (
+    <View style={styles.permissionContainer}>
+      <Text style={styles.errorText}>
+        Permission denied. Please enable contacts permission.
+      </Text>
+      <Button
+        mode="contained"
+        onPress={requestContactsPermission}
+        style={styles.permissionButton}>
+        Request Permission
+      </Button>
+    </View>
+  );
 
   const handleSearch = searchText => {
     setSearch(searchText);
@@ -245,9 +305,7 @@ export default function ContactSelectScreen({navigation, route}) {
         </View>
       ) : permissionError ? (
         <View style={styles.loadingContainer}>
-          <Text style={styles.errorText}>
-            Permission denied. Please enable contacts permission.
-          </Text>
+          {renderPermissionDeniedView()}
         </View>
       ) : (
         <FlatList
