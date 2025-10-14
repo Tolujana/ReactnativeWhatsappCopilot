@@ -94,12 +94,6 @@ const CreateEditCampaignScreen = ({toggleTheme}) => {
       return;
     }
 
-    const user = getAuth().currentUser;
-    if (!user) {
-      Alert.alert('Not logged in', 'Please sign in before saving a campaign.');
-      return;
-    }
-
     const tryInsert = async () => {
       try {
         const insertedId = await insertCampaign(name, description, extraFields);

@@ -105,6 +105,7 @@ export default function ContactTable({
       overflow: 'hidden',
       width: '98%',
       alignSelf: 'center',
+      minHeight: 200,
     },
     tableHeader: {
       backgroundColor: theme.colors.surfaceVariant,

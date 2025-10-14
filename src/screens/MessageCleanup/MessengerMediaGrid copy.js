@@ -11,7 +11,6 @@ import {
   Modal,
   SafeAreaView,
   Linking,
-  TextInput,
 } from 'react-native';
 import {
   IconButton,
@@ -22,8 +21,6 @@ import {
   Text,
   useTheme,
   Surface,
-  Portal,
-  Dialog,
 } from 'react-native-paper';
 import {useFocusEffect} from '@react-navigation/native';
 import {NativeModules} from 'react-native';
@@ -34,7 +31,17 @@ import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 const {StatusModule} = NativeModules;
 const screenWidth = Dimensions.get('window').width;
 const itemSize = Math.floor((screenWidth - 20) / 3);
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 30; // Number of items to load per page
+
+const formatDate = ts =>
+  new Date(ts).toLocaleString('default', {month: 'long', year: 'numeric'});
+
+const sizeBucket = size => {
+  if (size < 10 * 1024 * 1024) return '<10MB';
+  if (size < 50 * 1024 * 1024) return '10–50MB';
+  if (size < 100 * 1024 * 1024) return '50–100MB';
+  return '100MB+';
+};
 
 const MessengerMediaGrid = ({route, toggleTheme}) => {
   const theme = useTheme();
@@ -43,23 +50,15 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [mediaFiles, setMediaFiles] = useState([]);
   const [sortOption, setSortOption] = useState({by: 'date', order: 'desc'});
+  const [collapsedGroups, setCollapsedGroups] = useState({});
   const [selectedItems, setSelectedItems] = useState({});
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [snackbarMsg, setSnackbarMsg] = useState('');
   const [sortModalVisible, setSortModalVisible] = useState(false);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [flatData, setFlatData] = useState([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [startYear, setStartYear] = useState('');
-  const [startMonth, setStartMonth] = useState('');
-  const [startDay, setStartDay] = useState('');
-  const [endYear, setEndYear] = useState('');
-  const [endMonth, setEndMonth] = useState('');
-  const [endDay, setEndDay] = useState('');
-  const [minSize, setMinSize] = useState('');
-  const [maxSize, setMaxSize] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -73,6 +72,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
       setFolders(result || []);
       if (result?.length) {
         setSelectedFolder(result[0]);
+        loadFilesInFolder(result[0], true);
       }
     } catch (e) {
       console.error('📂 Folder load error', e?.message || e);
@@ -80,27 +80,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
     }
   };
 
-  const parseDate = (year, month, day) => {
-    if (!year || !month || !day) return 0;
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    return isNaN(date.getTime()) ? 0 : date.getTime();
-  };
-
   const loadFilesInFolder = async (folderName, reset = false) => {
-    if (
-      !startYear &&
-      !startMonth &&
-      !startDay &&
-      !endYear &&
-      !endMonth &&
-      !endDay &&
-      !minSize &&
-      !maxSize
-    ) {
-      setSnackbarMsg('Please apply a date or size filter');
-      return;
-    }
-
     if (reset) {
       setLoading(true);
       setOffset(0);
@@ -113,21 +93,11 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
     setSelectedFolder(folderName);
 
     try {
-      const minDate = parseDate(startYear, startMonth, startDay);
-      const maxDate = parseDate(endYear, endMonth, endDay) || Date.now();
-      const minSizeBytes = minSize ? parseFloat(minSize) * 1024 * 1024 : 0;
-      const maxSizeBytes = maxSize
-        ? parseFloat(maxSize) * 1024 * 1024
-        : Number.MAX_SAFE_INTEGER;
       const result = await StatusModule.getMediaInFolderPaged(
         selectedMessenger,
         folderName,
         reset ? 0 : offset,
         PAGE_SIZE,
-        minDate,
-        maxDate,
-        minSizeBytes,
-        maxSizeBytes,
       );
       const items = result.items || [];
       const sorted = sortItems(items);
@@ -143,6 +113,12 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
     }
   };
 
+  const loadMoreFiles = useCallback(() => {
+    if (hasMore && selectedFolder && !loading && !loadingMore) {
+      loadFilesInFolder(selectedFolder);
+    }
+  }, [hasMore, selectedFolder, loading, loadingMore]);
+
   const sortItems = items => {
     const {by, order} = sortOption;
     return [...items].sort((a, b) => {
@@ -153,22 +129,65 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
   };
 
   const flattenData = files => {
-    const dataWithAds = [];
-    files.forEach((item, index) => {
-      dataWithAds.push(item);
-      if ((index + 1) % 6 === 0 && index + 1 < files.length) {
-        dataWithAds.push({type: 'ad', id: `ad-${index}`});
-      }
+    const {by} = sortOption;
+    const grouped = {};
+    files.forEach(item => {
+      const key =
+        by === 'size' ? sizeBucket(item.size) : formatDate(item.timestamp);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
     });
-    setFlatData(dataWithAds);
+
+    const flattened = Object.entries(grouped).map(([title, groupData]) => {
+      const dataWithAds = [];
+      const collapsed = collapsedGroups[title];
+      if (!collapsed) {
+        groupData.forEach((item, index) => {
+          dataWithAds.push(item);
+          if ((index + 1) % 6 === 0 && index + 1 < groupData.length) {
+            dataWithAds.push({type: 'ad', id: `ad-${title}-${index}`});
+          }
+        });
+      }
+      return {
+        type: 'section',
+        title,
+        data: dataWithAds,
+      };
+    });
+    setFlatData(flattened);
   };
 
   useEffect(() => {
     flattenData(mediaFiles);
-  }, [mediaFiles, sortOption]);
+  }, [mediaFiles, sortOption, collapsedGroups]);
 
   const toggleSelect = uri => {
     setSelectedItems(prev => ({...prev, [uri]: !prev[uri]}));
+  };
+
+  const handleGroupDelete = (title, data) => {
+    Alert.alert(
+      'Delete Group',
+      `Delete all ${data.filter(i => i.uri).length} items in "${title}"?`,
+      [
+        {text: 'Cancel'},
+        {
+          text: 'Delete',
+          onPress: () => {
+            const urisToDelete = data.filter(i => i.uri).map(i => i.uri);
+            StatusModule.deleteMediaBatch(urisToDelete);
+            const updated = mediaFiles.filter(
+              f => !urisToDelete.includes(f.uri),
+            );
+            setMediaFiles(updated);
+            setSelectedItems({});
+            setSnackbarMsg(`${urisToDelete.length} items deleted`);
+          },
+        },
+      ],
+      {cancelable: true},
+    );
   };
 
   const handleSelectionDelete = () => {
@@ -215,6 +234,23 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
     setSelectedItems({});
   };
 
+  const selectAllInGroup = data => {
+    const newSelected = {...selectedItems};
+    data.forEach(file => {
+      if (file.type !== 'ad') {
+        newSelected[file.uri] = true;
+      }
+    });
+    setSelectedItems(newSelected);
+  };
+
+  const toggleGroup = title => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [title]: !prev[title],
+    }));
+  };
+
   const openFile = async uri => {
     try {
       await Linking.openURL(uri);
@@ -224,89 +260,145 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
     }
   };
 
-  const handleApplyFilter = () => {
-    if (selectedFolder) {
-      loadFilesInFolder(selectedFolder, true);
-    }
-    setFilterModalVisible(false);
-  };
-
   const isAnySelected = Object.values(selectedItems).some(Boolean);
 
   const renderItem = ({item}) => {
-    if (item.type === 'ad') {
-      return (
-        <View style={styles.adContainer}>
-          <BannerAd
-            unitId="ca-app-pub-3940256099942544/6300978111"
-            size={BannerAdSize.BANNER}
-            requestOptions={{requestNonPersonalizedAdsOnly: true}}
-          />
-        </View>
-      );
-    }
+    if (item.type !== 'section') return null;
 
-    const selected = selectedItems[item.uri];
-    const isImage = /\.(jpe?g|png|webp)$/i.test(item.name);
-    const isVideo = /\.(mp4|3gp|mkv)$/i.test(item.name);
-    const isAudio = /\.(mp3|m4a|opus)$/i.test(item.name);
-    const icon = isImage ? null : isVideo ? '🎥' : isAudio ? '🎵' : '📄';
+    const {title, data} = item;
 
     return (
-      <TouchableOpacity
-        onPress={() => {
-          if (isAnySelected) {
-            toggleSelect(item.uri);
-          } else {
-            openFile(item.uri);
-          }
-        }}
-        onLongPress={() => toggleSelect(item.uri)}
-        style={[styles.itemContainer, {backgroundColor: theme.colors.surface}]}
-        activeOpacity={0.8}>
-        <View style={[styles.mediaContainer, {opacity: selected ? 0.5 : 1}]}>
-          {isImage ? (
-            <Image
-              source={{uri: item.uri, cache: 'force-cache'}}
-              style={styles.image}
-            />
-          ) : isVideo ? (
-            <Video
-              source={{uri: item.uri}}
-              paused
-              style={styles.image}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
+      <View style={{marginBottom: 12}}>
+        <Surface
+          style={[
+            styles.sectionHeaderContainer,
+            {backgroundColor: theme.colors.surfaceVariant},
+          ]}>
+          <TouchableOpacity
+            style={styles.sectionHeaderTouchable}
+            onPress={() => toggleGroup(title)}
+            onLongPress={() => handleGroupDelete(title, data)}>
+            <Text
+              variant="titleSmall"
               style={[
-                styles.videoBox,
-                {backgroundColor: theme.colors.surfaceVariant},
+                styles.sectionHeader,
+                {color: theme.colors.onSurfaceVariant},
               ]}>
+              {title} {collapsedGroups[title] ? '▶' : '▼'}
+            </Text>
+          </TouchableOpacity>
+          {!collapsedGroups[title] && (
+            <TouchableOpacity onPress={() => selectAllInGroup(data)}>
               <Text
-                style={[
-                  styles.videoText,
-                  {color: theme.colors.onSurfaceVariant},
-                ]}>
-                {icon}
+                variant="labelMedium"
+                style={[styles.selectAllText, {color: theme.colors.primary}]}>
+                Select All
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
-          <Text
-            variant="labelSmall"
-            style={[styles.percentText, {backgroundColor: theme.colors.scrim}]}>
-            {(item.size / (1024 * 1024)).toFixed(1)} MB
-          </Text>
-        </View>
-        {selected && (
-          <Checkbox
-            status="checked"
-            onPress={() => toggleSelect(item.uri)}
-            style={[styles.checkbox, {backgroundColor: theme.colors.surface}]}
-            color={theme.colors.primary}
-          />
+        </Surface>
+
+        {data.length > 0 && (
+          <View style={styles.gridContainer}>
+            {data.map((file, index) => {
+              if (file.type === 'ad') {
+                return (
+                  <View key={file.id} style={styles.adContainer}>
+                    <BannerAd
+                      unitId="ca-app-pub-3940256099942544/6300978111"
+                      size={BannerAdSize.BANNER}
+                      requestOptions={{requestNonPersonalizedAdsOnly: true}}
+                    />
+                  </View>
+                );
+              }
+
+              const selected = selectedItems[file.uri];
+              const isImage = /\.(jpe?g|png|webp)$/i.test(file.name);
+              const isVideo = /\.(mp4|3gp|mkv)$/i.test(file.name);
+              const isAudio = /\.(mp3|m4a|opus)$/i.test(file.name);
+              const icon = isImage
+                ? null
+                : isVideo
+                ? '🎥'
+                : isAudio
+                ? '🎵'
+                : '📄';
+
+              return (
+                <TouchableOpacity
+                  key={file.uri}
+                  onPress={() => {
+                    if (isAnySelected) {
+                      toggleSelect(file.uri);
+                    } else {
+                      openFile(file.uri);
+                    }
+                  }}
+                  onLongPress={() => toggleSelect(file.uri)}
+                  style={[
+                    styles.itemContainer,
+                    {backgroundColor: theme.colors.surface},
+                  ]}
+                  activeOpacity={0.8}>
+                  <View
+                    style={[
+                      styles.mediaContainer,
+                      {opacity: selected ? 0.5 : 1},
+                    ]}>
+                    {isImage ? (
+                      <Image
+                        source={{uri: file.uri, cache: 'force-cache'}}
+                        style={styles.image}
+                      />
+                    ) : isVideo ? (
+                      <Video
+                        source={{uri: file.uri}}
+                        paused
+                        style={styles.image}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.videoBox,
+                          {backgroundColor: theme.colors.surfaceVariant},
+                        ]}>
+                        <Text
+                          style={[
+                            styles.videoText,
+                            {color: theme.colors.onSurfaceVariant},
+                          ]}>
+                          {icon}
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      variant="labelSmall"
+                      style={[
+                        styles.percentText,
+                        {backgroundColor: theme.colors.scrim},
+                      ]}>
+                      {(file.size / (1024 * 1024)).toFixed(1)} MB
+                    </Text>
+                  </View>
+                  {selected && (
+                    <Checkbox
+                      status="checked"
+                      onPress={() => toggleSelect(file.uri)}
+                      style={[
+                        styles.checkbox,
+                        {backgroundColor: theme.colors.surface},
+                      ]}
+                      color={theme.colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -341,7 +433,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
             <Chip
               key={folder}
               selected={folder === selectedFolder}
-              onPress={() => setSelectedFolder(folder)}
+              onPress={() => loadFilesInFolder(folder, true)}
               style={styles.chip}
               mode={folder === selectedFolder ? 'flat' : 'outlined'}>
               <Text
@@ -361,12 +453,6 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
             onPress={() => setSortModalVisible(true)}
             iconColor={theme.colors.primary}
           />
-          <IconButton
-            icon="filter"
-            size={24}
-            onPress={() => setFilterModalVisible(true)}
-            iconColor={theme.colors.primary}
-          />
         </View>
       </Surface>
 
@@ -375,68 +461,39 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
           styles.listContainer,
           {backgroundColor: theme.colors.background},
         ]}>
-        {selectedFolder &&
-        (startYear ||
-          startMonth ||
-          startDay ||
-          endYear ||
-          endMonth ||
-          endDay ||
-          minSize ||
-          maxSize) ? (
-          loading ? (
-            <ActivityIndicator
-              size="large"
-              color={theme.colors.primary}
-              style={{marginTop: 20}}
-            />
-          ) : (
-            <>
-              <FlashList
-                data={flatData}
-                renderItem={renderItem}
-                keyExtractor={(item, index) => (item.uri || item.id) + index}
-                estimatedItemSize={itemSize + 30}
-                initialNumToRender={10}
-                maxToRenderPerBatch={10}
-                windowSize={5}
-                viewabilityConfig={{itemVisiblePercentThreshold: 50}}
-                extraData={selectedItems}
-                numColumns={3}
-                ListFooterComponent={
-                  hasMore && mediaFiles.length > 0 ? (
-                    <Button
-                      mode="contained"
-                      onPress={() => loadFilesInFolder(selectedFolder)}
-                      loading={loadingMore}
-                      disabled={loadingMore}
-                      style={styles.loadMoreButton}>
-                      Load More
-                    </Button>
-                  ) : null
-                }
-              />
-            </>
-          )
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={theme.colors.primary}
+            style={{marginTop: 20}}
+          />
         ) : (
-          <View style={styles.emptyState}>
-            <Text
-              variant="bodyLarge"
-              style={{color: theme.colors.onBackground}}>
-              Please select a folder and apply a date or size filter to load
-              media.
-            </Text>
-            <Button
-              mode="contained"
-              onPress={() => setFilterModalVisible(true)}
-              style={styles.filterButton}>
-              Set Filter
-            </Button>
-          </View>
+          <FlashList
+            data={flatData}
+            renderItem={renderItem}
+            keyExtractor={(item, index) => item.title + index}
+            estimatedItemSize={itemSize + 30}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            viewabilityConfig={{itemVisiblePercentThreshold: 50}}
+            extraData={selectedItems}
+            onEndReached={loadMoreFiles}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              loadingMore && hasMore ? (
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.primary}
+                  style={{marginVertical: 20}}
+                />
+              ) : null
+            }
+          />
         )}
       </View>
 
-      {isAnySelected && (
+      {Object.values(selectedItems).some(Boolean) && (
         <Surface
           style={[styles.selectionBar, {backgroundColor: theme.colors.surface}]}
           elevation={4}>
@@ -509,118 +566,6 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
         </TouchableOpacity>
       </Modal>
 
-      <Portal>
-        <Dialog
-          visible={filterModalVisible}
-          onDismiss={() => setFilterModalVisible(false)}
-          style={{backgroundColor: theme.colors.surface}}>
-          <Dialog.Title>Filter Media</Dialog.Title>
-          <Dialog.Content>
-            <Text variant="bodyMedium">Start Date:</Text>
-            <View style={styles.dateRow}>
-              <TextInput
-                value={startYear}
-                onChangeText={setStartYear}
-                keyboardType="numeric"
-                placeholder="YYYY"
-                style={styles.dateField}
-                maxLength={4}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-              <TextInput
-                value={startMonth}
-                onChangeText={setStartMonth}
-                keyboardType="numeric"
-                placeholder="MM"
-                style={styles.dateField}
-                maxLength={2}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-              <TextInput
-                value={startDay}
-                onChangeText={setStartDay}
-                keyboardType="numeric"
-                placeholder="DD"
-                style={styles.dateField}
-                maxLength={2}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-            </View>
-            <Text variant="bodyMedium" style={{marginTop: 16}}>
-              End Date:
-            </Text>
-            <View style={styles.dateRow}>
-              <TextInput
-                value={endYear}
-                onChangeText={setEndYear}
-                keyboardType="numeric"
-                placeholder="YYYY"
-                style={styles.dateField}
-                maxLength={4}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-              <TextInput
-                value={endMonth}
-                onChangeText={setEndMonth}
-                keyboardType="numeric"
-                placeholder="MM"
-                style={styles.dateField}
-                maxLength={2}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-              <TextInput
-                value={endDay}
-                onChangeText={setEndDay}
-                keyboardType="numeric"
-                placeholder="DD"
-                style={styles.dateField}
-                maxLength={2}
-                theme={{colors: {text: theme.colors.onSurface}}}
-              />
-            </View>
-            <Text variant="bodyMedium" style={{marginTop: 16}}>
-              Minimum file size (MB):
-            </Text>
-            <TextInput
-              value={minSize}
-              onChangeText={setMinSize}
-              keyboardType="numeric"
-              placeholder="e.g., 10"
-              style={styles.sizeInput}
-              theme={{colors: {text: theme.colors.onSurface}}}
-            />
-            <Text variant="bodyMedium" style={{marginTop: 16}}>
-              Maximum file size (MB):
-            </Text>
-            <TextInput
-              value={maxSize}
-              onChangeText={setMaxSize}
-              keyboardType="numeric"
-              placeholder="e.g., 100"
-              style={styles.sizeInput}
-              theme={{colors: {text: theme.colors.onSurface}}}
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setFilterModalVisible(false)}>Cancel</Button>
-            <Button
-              onPress={handleApplyFilter}
-              disabled={
-                !startYear &&
-                !startMonth &&
-                !startDay &&
-                !endYear &&
-                !endMonth &&
-                !endDay &&
-                !minSize &&
-                !maxSize
-              }>
-              Apply
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
-
       <Snackbar
         visible={!!snackbarMsg}
         onDismiss={() => setSnackbarMsg('')}
@@ -671,6 +616,31 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     marginTop: 8,
+  },
+  sectionHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 8,
+    marginTop: 8,
+    borderRadius: 8,
+  },
+  sectionHeaderTouchable: {
+    flex: 1,
+  },
+  sectionHeader: {
+    fontWeight: 'bold',
+  },
+  selectAllText: {
+    paddingLeft: 8,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
   },
   itemContainer: {
     width: itemSize,
@@ -764,39 +734,6 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginVertical: 8,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  filterButton: {
-    marginTop: 16,
-  },
-  loadMoreButton: {
-    marginVertical: 16,
-    marginHorizontal: 16,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  dateField: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 4,
-    padding: 8,
-    marginHorizontal: 4,
-  },
-  sizeInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 4,
-    padding: 8,
-    marginTop: 8,
   },
 });
 

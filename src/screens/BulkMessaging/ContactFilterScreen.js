@@ -31,6 +31,13 @@ import {NativeModules} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import MessageEditorModal from '../../components/MessageEditor';
 import {BannerAd, BannerAdSize, TestIds} from 'react-native-google-mobile-ads';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Storage keys
+const SETTINGS_KEYS = {
+  WHATSAPP_PACKAGE: 'whatsapp_package',
+  NEEDS_HELP: 'needs_help',
+};
 
 const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   const theme = useTheme();
@@ -51,6 +58,50 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   // Your actual ad unit IDs (replace with your own)
   const AD_UNIT_TOP = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
   const AD_UNIT_BOTTOM = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
+
+  // Load settings from AsyncStorage
+  const loadSettings = async () => {
+    try {
+      const [savedPackage, savedNeedsHelp] = await Promise.all([
+        AsyncStorage.getItem(SETTINGS_KEYS.WHATSAPP_PACKAGE),
+        AsyncStorage.getItem(SETTINGS_KEYS.NEEDS_HELP),
+      ]);
+
+      if (savedPackage) {
+        setWhatsappPackage(savedPackage);
+      }
+      if (savedNeedsHelp !== null) {
+        setNeedsHelp(JSON.parse(savedNeedsHelp));
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
+  // Save WhatsApp package setting
+  const saveWhatsappPackage = async packageName => {
+    try {
+      setWhatsappPackage(packageName);
+      await AsyncStorage.setItem(SETTINGS_KEYS.WHATSAPP_PACKAGE, packageName);
+      console.log('WhatsApp package saved:', packageName);
+    } catch (error) {
+      console.error('Failed to save WhatsApp package:', error);
+    }
+  };
+
+  // Save needs help setting
+  const saveNeedsHelp = async value => {
+    try {
+      setNeedsHelp(value);
+      await AsyncStorage.setItem(
+        SETTINGS_KEYS.NEEDS_HELP,
+        JSON.stringify(value),
+      );
+      console.log('Needs help setting saved:', value);
+    } catch (error) {
+      console.error('Failed to save needs help setting:', error);
+    }
+  };
 
   const openSettings = () => {
     AccessibilityHelper.openAccessibilitySettings();
@@ -77,6 +128,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     useCallback(() => {
       fetchPoints();
       preloadRewardedAd();
+      loadSettings(); // Load settings when screen focuses
     }, []),
   );
 
@@ -494,12 +546,12 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         <View style={styles.whatsappOptions}>
           <TouchableOpacity
             style={styles.option}
-            onPress={() => setWhatsappPackage('com.whatsapp')}>
+            onPress={() => saveWhatsappPackage('com.whatsapp')}>
             <Checkbox
               status={
                 whatsappPackage === 'com.whatsapp' ? 'checked' : 'unchecked'
               }
-              onPress={() => setWhatsappPackage('com.whatsapp')}
+              onPress={() => saveWhatsappPackage('com.whatsapp')}
               color={theme.colors.primary}
             />
             <Text style={[styles.optionText, {color: theme.colors.onSurface}]}>
@@ -509,12 +561,12 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
 
           <TouchableOpacity
             style={styles.option}
-            onPress={() => setWhatsappPackage('com.whatsapp.w4b')}>
+            onPress={() => saveWhatsappPackage('com.whatsapp.w4b')}>
             <Checkbox
               status={
                 whatsappPackage === 'com.whatsapp.w4b' ? 'checked' : 'unchecked'
               }
-              onPress={() => setWhatsappPackage('com.whatsapp.w4b')}
+              onPress={() => saveWhatsappPackage('com.whatsapp.w4b')}
               color={theme.colors.primary}
             />
             <Text style={[styles.optionText, {color: theme.colors.onSurface}]}>
@@ -532,7 +584,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         ]}>
         <Checkbox
           status={needsHelp ? 'checked' : 'unchecked'}
-          onPress={() => setNeedsHelp(!needsHelp)}
+          onPress={() => saveNeedsHelp(!needsHelp)}
           color={theme.colors.primary}
         />
         <Text style={[styles.helpText, {color: theme.colors.onSurfaceVariant}]}>
@@ -584,6 +636,8 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     </View>
   );
 };
+
+// ... styles remain the same
 
 const styles = StyleSheet.create({
   container: {

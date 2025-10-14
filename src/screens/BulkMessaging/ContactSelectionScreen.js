@@ -20,8 +20,13 @@ import ContactTable from '../../components/ContactTable';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import MyFab from '../../components/MyFab';
 import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
+import Header from '../../components/Header';
 
-export default function ContactSelectionScreen({route, campaignData}) {
+export default function ContactSelectionScreen({
+  route,
+  campaignData,
+  toggleTheme,
+}) {
   const navigation = useNavigation(); // Add this hook
   const theme = useTheme();
   const {campaign} = route?.params || campaignData;
@@ -312,6 +317,7 @@ export default function ContactSelectionScreen({route, campaignData}) {
 
   return (
     <Provider>
+      {/* <Header toggleTheme={toggleTheme} /> */}
       <View
         style={{flex: 1, padding: 1, backgroundColor: theme.colors.background}}>
         <ContactTable
@@ -324,12 +330,12 @@ export default function ContactSelectionScreen({route, campaignData}) {
           fetchContacts={fetchContacts}
           extraFieldsKeys={JSON.parse(campaign.extra_fields)}
         />
-        <View style={styles.bannerContainer}>
+        {/* <View style={styles.bannerContainer}>
           <BannerAd
             unitId="ca-app-pub-3940256099942544/6300978111"
             size={BannerAdSize.BANNER}
           />
-        </View>
+        </View> */}
         <View style={styles.doneButtonContainer}>
           <Button
             mode="contained"

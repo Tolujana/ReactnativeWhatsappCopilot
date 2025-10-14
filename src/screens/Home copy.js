@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Button,
   ScrollView,
@@ -11,8 +11,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, {FadeInDown} from 'react-native-reanimated';
 import {useNavigation} from '@react-navigation/native';
 import {getAuth, signOut} from '@react-native-firebase/auth';
-import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
-import {getPoints, preloadRewardedAd, showRewardedAd} from '../util/data';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { getPoints, preloadRewardedAd, showRewardedAd } from '../util/data';
 
 const MENU_ITEMS = {
   'Bulk Messaging': [

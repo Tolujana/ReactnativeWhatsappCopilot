@@ -10,6 +10,7 @@ import {Text, Surface, useTheme, Button} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useNavigation} from '@react-navigation/native';
 import {NativeModules} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const {StatusModule} = NativeModules;
 
@@ -28,17 +29,49 @@ const MESSENGERS = [
   },
 ];
 
+// Key for AsyncStorage
+const TREE_URI_STORAGE_KEY = 'savedTreeUri';
+
 export default function MessengerCleanup() {
   const theme = useTheme();
   const navigation = useNavigation();
   const [treeUri, setTreeUri] = useState(null);
 
+  // Save treeUri to AsyncStorage
+  const saveTreeUriToStorage = async uri => {
+    try {
+      await AsyncStorage.setItem(TREE_URI_STORAGE_KEY, uri);
+      console.log('Tree URI saved to storage:', uri);
+    } catch (error) {
+      console.error('Failed to save tree URI to storage:', error);
+    }
+  };
+
+  // Load treeUri from AsyncStorage
+  const loadTreeUriFromStorage = async () => {
+    try {
+      const savedUri = await AsyncStorage.getItem(TREE_URI_STORAGE_KEY);
+      if (savedUri) {
+        setTreeUri(savedUri);
+        console.log('Tree URI loaded from storage:', savedUri);
+      }
+    } catch (error) {
+      console.error('Failed to load tree URI from storage:', error);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
+        // First try to load from AsyncStorage
+        await loadTreeUriFromStorage();
+
+        // Also check if there's a saved URI from StatusModule (for backward compatibility)
         const savedUri = await StatusModule.getSavedTreeUri();
-        if (savedUri) {
+        if (savedUri && !treeUri) {
           setTreeUri(savedUri);
+          // Also save it to AsyncStorage for future use
+          await saveTreeUriToStorage(savedUri);
         }
       } catch (e) {
         console.warn('No saved folder found yet');
@@ -49,10 +82,13 @@ export default function MessengerCleanup() {
   const pickFolder = async () => {
     try {
       const picked = await StatusModule.openStatusFolderPicker('cleanup');
-
       console.log('Picked folder URI:', picked);
 
+      // Update state
       setTreeUri(picked);
+
+      // Save to AsyncStorage
+      await saveTreeUriToStorage(picked);
 
       Alert.alert(
         'Folder Selected',
@@ -79,7 +115,6 @@ export default function MessengerCleanup() {
       );
     } else {
       const appKey = getAppKey(app);
-      // StatusModule.launchMessengerMedia(appKey);
       navigation.navigate('MessengerMediaGrid', {app, appKey, treeUri});
     }
   };
@@ -88,10 +123,8 @@ export default function MessengerCleanup() {
   const isAndroidMediaFolder = treeUri => {
     if (!treeUri) return false;
 
-    // Convert URI to string and check for Android/media path patterns
     const uriString = treeUri.toString().toLowerCase();
 
-    // Check for common patterns that indicate Android/media folder
     const androidMediaPatterns = [
       '/android/media',
       '%2fandroid%2fmedia',
@@ -103,17 +136,40 @@ export default function MessengerCleanup() {
     return androidMediaPatterns.some(pattern => uriString.includes(pattern));
   };
 
+  // Optional: Function to clear the saved treeUri
+  const clearSavedTreeUri = async () => {
+    try {
+      await AsyncStorage.removeItem(TREE_URI_STORAGE_KEY);
+      setTreeUri(null);
+      Alert.alert('Success', 'Saved folder has been cleared.');
+    } catch (error) {
+      console.error('Failed to clear tree URI:', error);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.noticeBox}>
         <Text variant="bodyMedium" style={{textAlign: 'center'}}>
-          {isAndroidMediaFolder(treeUri)
-            ? "You've selected the correct Android/media folder."
-            : 'Selected folder is not Android/media. Please select the correct folder.'}
+          {treeUri
+            ? isAndroidMediaFolder(treeUri)
+              ? "You've selected the correct Android/media folder."
+              : 'Selected folder is not Android/media. Please select the correct folder.'
+            : 'Please select the Android/media folder to access messenger media.'}
         </Text>
+
         <Button mode="contained" onPress={pickFolder} style={{marginTop: 8}}>
           {treeUri ? 'Change Folder' : 'Pick Folder'}
         </Button>
+
+        {treeUri && (
+          <Button
+            mode="outlined"
+            onPress={clearSavedTreeUri}
+            style={{marginTop: 8}}>
+            Clear Saved Folder
+          </Button>
+        )}
       </View>
 
       {MESSENGERS.map(({app, icon}) => (

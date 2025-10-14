@@ -1,9 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import CheckBox from '@react-native-community/checkbox';
 import {
   View,
   Text,
-  FlatList,
   Image,
   TouchableOpacity,
   Alert,
@@ -11,15 +9,19 @@ import {
   Modal,
   Dimensions,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Video from 'react-native-video';
 import {NativeModules} from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
+import {FlashList} from '@shopify/flash-list';
+import {Snackbar, Button, Checkbox} from 'react-native-paper';
 
 const {StatusModule} = NativeModules;
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const screenWidth = Dimensions.get('window').width;
+const itemSize = Math.floor((screenWidth - 20) / 3);
 
 export default function StatusSaver() {
   const navigation = useNavigation();
@@ -27,128 +29,375 @@ export default function StatusSaver() {
   const [sources, setSources] = useState([]);
   const [current, setCurrent] = useState(null);
   const [media, setMedia] = useState([]);
-  const [selected, setSelected] = useState({});
+  const [displayData, setDisplayData] = useState([]);
+  const [selectedItems, setSelectedItems] = useState({});
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [folderPicked, setFolderPicked] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [savedTreeUri, setSavedTreeUri] = useState(null);
+  const [snackbarMsg, setSnackbarMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load saved treeUri from native module
+  const loadSavedTreeUri = async () => {
+    try {
+      console.log('🔍 Retrieving saved treeUri from native module...');
+      const savedUri = await StatusModule.getSavedTreeUri();
+      console.log('📁 Retrieved URL:', savedUri);
+      return savedUri || null;
+    } catch (error) {
+      console.error('🚨 Failed to load saved treeUri:', error);
+      return null;
+    }
+  };
+
+  // Load folderPicked state from AsyncStorage
+  const loadFolderPicked = async () => {
+    try {
+      const value = await AsyncStorage.getItem('folderPicked');
+      console.log('📂 Retrieved folderPicked:', value);
+      return value === 'true';
+    } catch (error) {
+      console.error('🚨 Failed to load folderPicked:', error);
+      return false;
+    }
+  };
+
+  // Save folderPicked state to AsyncStorage
+  const saveFolderPicked = async value => {
+    try {
+      await AsyncStorage.setItem('folderPicked', value.toString());
+      console.log('✅ Saved folderPicked state:', value);
+    } catch (error) {
+      console.error('🚨 Failed to save folderPicked:', error);
+    }
+  };
+
+  // Load current app from AsyncStorage
+  const loadCurrentApp = async () => {
+    try {
+      const value = await AsyncStorage.getItem('currentApp');
+      console.log('📱 Retrieved current app:', value);
+      return value || null;
+    } catch (error) {
+      console.error('🚨 Failed to load current app:', error);
+      return null;
+    }
+  };
+
+  // Save current app to AsyncStorage
+  const saveCurrentApp = async value => {
+    try {
+      await AsyncStorage.setItem('currentApp', value);
+      console.log('✅ Saved current app:', value);
+    } catch (error) {
+      console.error('🚨 Failed to save current app:', error);
+    }
+  };
+
+  // Validate treeUri with retry mechanism
+  const validateTreeUri = async (uri, retries = 2) => {
+    if (!uri) return false;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(
+          `🔎 Validating treeUri (attempt ${attempt}/${retries}):`,
+          uri,
+        );
+        const isAccessible = await StatusModule.checkUriPermission(uri);
+        if (!isAccessible) {
+          console.log('❌ TreeUri permission revoked or invalid');
+          if (attempt < retries) {
+            console.log('⏳ Retrying in 500ms...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          return false;
+        }
+        const files = await StatusModule.refreshStatuses();
+        console.log('📊 Validation returned:', files?.length || 0, 'items');
+        return files && files.length >= 0;
+      } catch (error) {
+        console.error(
+          `❌ TreeUri validation failed (attempt ${attempt}):`,
+          error,
+        );
+        if (attempt < retries) {
+          console.log('⏳ Retrying in 500ms...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+        return false;
+      }
+    }
+    return false;
+  };
+
+  // Initialize component
+  useEffect(() => {
+    const initialize = async () => {
+      setIsLoading(true);
+      console.log('🚀 Initializing StatusSaver...');
+      const uri = await loadSavedTreeUri();
+      const picked = await loadFolderPicked();
+      const savedCurrentApp = await loadCurrentApp();
+
+      if (uri && picked) {
+        const isValid = await validateTreeUri(uri);
+        if (isValid) {
+          setSavedTreeUri(uri);
+          setFolderPicked(true);
+          await refreshFiles(uri);
+          if (savedCurrentApp) {
+            setCurrent(savedCurrentApp);
+          }
+          console.log('✅ Initialized with valid saved treeUri');
+        } else {
+          console.log(
+            '❌ Saved treeUri invalid after retries, prompting reselect',
+          );
+          setFolderPicked(false);
+          setSavedTreeUri(null);
+          await saveFolderPicked(false);
+          Alert.alert(
+            'Folder Access Lost',
+            'The previously selected folder is no longer accessible. Please select it again.',
+            [{text: 'OK', onPress: pickFolder}],
+          );
+        }
+      } else {
+        console.log('ℹ️ No valid saved treeUri or folderPicked');
+        setFolderPicked(false);
+        setSavedTreeUri(null);
+        await saveFolderPicked(false);
+      }
+      setIsLoading(false);
+    };
+    initialize();
+  }, []);
 
   const pickFolder = async () => {
     try {
-      // Check if tutorial has been shown
       const hasSeenTutorial = await AsyncStorage.getItem('hasSeenTutorial');
       if (!hasSeenTutorial) {
+        console.log('📚 Showing tutorial');
         setShowTutorial(true);
         return;
       }
+
+      setIsLoading(true);
+      console.log('📁 Opening folder picker...');
       const all = await StatusModule.openStatusFolderPicker('status');
+      console.log('📄 Files returned:', all?.length || 0);
+
       if (!all || all.length === 0) {
+        console.log('❌ No files found in selected folder');
         Alert.alert(
           'No statuses found',
           'View statuses first via WhatsApp, Telegram, etc.',
         );
+        setIsLoading(false);
         return;
       }
+
       setFolderPicked(true);
+      await saveFolderPicked(true);
       updateFiles(all);
+
+      const uri = await loadSavedTreeUri();
+      if (uri) {
+        setSavedTreeUri(uri);
+        await StatusModule.setSavedTreeUri(uri); // Re-persist URI to ensure permission
+        console.log('✅ Retrieved and re-persisted treeUri:', uri);
+      } else {
+        console.log('⚠️ Could not retrieve treeUri after picking');
+      }
     } catch (e) {
+      console.error('❌ Error in pickFolder:', e);
       Alert.alert('Error', e.message);
     }
+    setIsLoading(false);
   };
 
   const dismissTutorial = async () => {
+    console.log('✅ Tutorial dismissed');
     await AsyncStorage.setItem('hasSeenTutorial', 'true');
     setShowTutorial(false);
-    // Proceed with folder picking after tutorial
     pickFolder();
   };
 
   const updateFiles = all => {
+    console.log('📋 Updating files:', all.length, 'items');
     setFiles(all);
     const appsFound = [...new Set(all.map(f => f.app))];
+    console.log('📱 Apps found:', appsFound);
     setSources(appsFound);
-    if (appsFound.length) {
-      setCurrent(prev => prev || appsFound[0]);
+    if (appsFound.length && !current) {
+      setCurrent(appsFound[0]);
+      saveCurrentApp(appsFound[0]);
+      console.log('🎯 Current app:', appsFound[0]);
     }
   };
 
-  const refreshFiles = async () => {
+  const refreshFiles = async uri => {
+    console.log('🔄 Refreshing files with URI:', uri);
     try {
-      if (!folderPicked) return;
-      const all = await StatusModule.refreshStatuses?.();
-      if (all?.length) updateFiles(all);
+      const all = await StatusModule.refreshStatuses();
+      console.log('📊 Refresh returned:', all?.length || 0, 'items');
+      updateFiles(all);
+      return true;
     } catch (e) {
-      console.log('Refresh failed', e.message);
+      console.error('❌ Refresh failed:', e.message);
+      return false;
     }
   };
 
   useEffect(() => {
     const m = files.filter(f => f.app === current);
-    // Insert ads after every 3rd item
-    const mediaWithAds = m.reduce((acc, item, index) => {
-      acc.push({type: 'media', data: item});
-      if ((index + 1) % 3 === 0) {
-        acc.push({type: 'ad', id: `ad-${index}`});
+    console.log(
+      '🎨 Rendering media for',
+      current ? current : 'null',
+      ':',
+      m.length,
+      'items',
+    );
+    setMedia(m);
+
+    // Build displayData with rows and ads
+    const displayDataTemp = [];
+    let tempRow = [];
+    let adCounter = 0;
+    m.forEach((data, flatIndex) => {
+      tempRow.push({data, flatIndex});
+      if (tempRow.length === 3 || flatIndex === m.length - 1) {
+        displayDataTemp.push({type: 'row', items: tempRow});
+        tempRow = [];
       }
-      return acc;
-    }, []);
-    setMedia(mediaWithAds);
-    const s = Object.fromEntries(m.map(f => [f.uri, selected[f.uri] || false]));
-    setSelected(s);
+      if ((flatIndex + 1) % 6 === 0 && flatIndex < m.length - 1) {
+        displayDataTemp.push({type: 'ad', id: `ad-${adCounter++}`});
+      }
+    });
+    setDisplayData(displayDataTemp);
+
+    const s = Object.fromEntries(
+      m.map(f => [f.uri, selectedItems[f.uri] || false]),
+    );
+    setSelectedItems(s);
   }, [current, files]);
 
   useFocusEffect(
     useCallback(() => {
-      refreshFiles();
-    }, [folderPicked]),
+      const refreshOnFocus = async () => {
+        const picked = await loadFolderPicked();
+        const uri = await loadSavedTreeUri();
+        const savedCurrentApp = await loadCurrentApp();
+        if (picked && uri) {
+          setIsLoading(true);
+          const isValid = await validateTreeUri(uri);
+          if (isValid) {
+            setFolderPicked(true);
+            setSavedTreeUri(uri);
+            if (savedCurrentApp) {
+              setCurrent(savedCurrentApp);
+            }
+            await refreshFiles(uri);
+            console.log('✅ Refreshed files on focus');
+          } else {
+            console.log('❌ URI invalid on focus, prompting reselect');
+            setFolderPicked(false);
+            setSavedTreeUri(null);
+            await saveFolderPicked(false);
+            Alert.alert(
+              'Folder Access Lost',
+              'The previously selected folder is no longer accessible. Please select it again.',
+              [{text: 'OK', onPress: pickFolder}],
+            );
+          }
+          setIsLoading(false);
+        } else {
+          console.log('ℹ️ No folder picked or URI on focus');
+          setFolderPicked(false);
+          setSavedTreeUri(null);
+          await saveFolderPicked(false);
+        }
+      };
+      refreshOnFocus();
+    }, []),
   );
 
-  const toggleSel = uri => {
-    setSelected(prev => ({...prev, [uri]: !prev[uri]}));
+  const toggleSelect = uri => {
+    setSelectedItems(prev => ({...prev, [uri]: !prev[uri]}));
   };
 
-  const handleSave = async () => {
-    const selectedItems = Object.entries(selected).filter(([, v]) => v);
-    if (!selectedItems.length) return;
+  const handleSelectionSave = async () => {
+    const uris = Object.keys(selectedItems).filter(uri => selectedItems[uri]);
+    if (!uris.length) return;
     try {
-      for (const [uri] of selectedItems) {
+      let savedCount = 0;
+      for (const uri of uris) {
         await StatusModule.saveToGalleryAndGetUri(uri);
+        savedCount++;
       }
-      Alert.alert('Saved', `${selectedItems.length} item(s) saved to gallery.`);
+      setSnackbarMsg(`${savedCount} items saved to gallery`);
     } catch (e) {
-      Alert.alert('Error', 'Failed to save items');
+      console.error('Save error:', e);
+      setSnackbarMsg('Failed to save some items');
     }
+    setSelectedItems({});
   };
 
-  useEffect(() => {
-    const restorePrevious = async () => {
-      try {
-        const restored = await StatusModule.refreshStatuses();
-        if (restored?.length) {
-          setFolderPicked(true);
-          updateFiles(restored);
-        }
-      } catch (e) {
-        console.log('No previous folder', e.message);
-      }
-    };
-    restorePrevious();
-  }, []);
-
-  const handleUseStatus = async () => {
-    const chosen = Object.entries(selected).find(([, v]) => v);
-    if (chosen) {
-      try {
-        await StatusModule.postToWhatsappStatus(chosen[0]);
-      } catch (e) {
-        Alert.alert('Error', 'Failed to post to WhatsApp Status');
-      }
-    }
+  const handleSelectionDelete = () => {
+    const uris = Object.keys(selectedItems).filter(uri => selectedItems[uri]);
+    if (!uris.length) return;
+    Alert.alert(
+      'Delete Selected',
+      `Delete ${uris.length} selected item(s)?`,
+      [
+        {text: 'Cancel'},
+        {
+          text: 'Delete',
+          onPress: () => {
+            StatusModule.deleteMediaBatch(uris);
+            const updated = files.filter(f => !uris.includes(f.uri));
+            setFiles(updated);
+            setSelectedItems({});
+            setSnackbarMsg(`${uris.length} items deleted`);
+          },
+        },
+      ],
+      {cancelable: true},
+    );
   };
+
+  const handleSelectionShareAsStatus = async () => {
+    const uris = Object.keys(selectedItems).filter(uri => selectedItems[uri]);
+    if (!uris.length) return;
+    try {
+      let sharedCount = 0;
+      for (const uri of uris) {
+        await StatusModule.postToWhatsappStatus(uri);
+        sharedCount++;
+      }
+      setSnackbarMsg(`${sharedCount} items shared as status`);
+    } catch (e) {
+      console.error('Share as status error:', e);
+      setSnackbarMsg('Failed to share some items as status');
+    }
+    setSelectedItems({});
+  };
+
+  const clearSelection = () => {
+    setSelectedItems({});
+  };
+
+  const isAnySelected = Object.values(selectedItems).some(Boolean);
 
   const renderPreview = () => {
     if (previewIndex < 0) return null;
-    const f = media[previewIndex]?.data;
+    const f = media[previewIndex];
     if (!f) return null;
+
+    console.log('👀 Opening preview for:', f.name);
     return (
       <Modal visible transparent style={{flex: 1}}>
         <View style={styles.preview}>
@@ -187,8 +436,9 @@ export default function StatusSaver() {
     );
   };
 
-  const renderItem = ({item, index}) => {
+  const renderItem = ({item}) => {
     if (item.type === 'ad') {
+      console.log('📢 Rendering ad');
       return (
         <View style={styles.adContainer}>
           <BannerAd
@@ -200,80 +450,205 @@ export default function StatusSaver() {
       );
     }
 
-    const {data} = item;
+    // Render row
     return (
-      <TouchableOpacity
-        onLongPress={() => toggleSel(data.uri)}
-        onPress={() => setPreviewIndex(index)}>
-        <View style={styles.imageWrapper}>
-          <Image source={{uri: data.uri}} style={styles.image} />
-          <View style={styles.checkboxContainer}>
-            <CheckBox
-              value={!!selected[data.uri]}
-              onValueChange={() => toggleSel(data.uri)}
-              tintColors={{true: '#1976d2', false: '#fff'}}
-            />
-          </View>
-          {/\.(mp4)$/i.test(data.name) && (
-            <Text style={styles.playIcon}>▶️</Text>
-          )}
-        </View>
-      </TouchableOpacity>
+      <View style={styles.row}>
+        {item.items.map((sub, subIndex) => {
+          const {data, flatIndex} = sub;
+          const selected = selectedItems[data.uri];
+          return (
+            <TouchableOpacity
+              key={subIndex}
+              onPress={() => {
+                if (isAnySelected) {
+                  toggleSelect(data.uri);
+                } else {
+                  setPreviewIndex(flatIndex);
+                }
+              }}
+              onLongPress={() => toggleSelect(data.uri)}
+              style={styles.itemContainer}
+              activeOpacity={0.8}>
+              <View
+                style={[styles.mediaContainer, {opacity: selected ? 0.5 : 1}]}>
+                {/\.(mp4)$/i.test(data.name) ? (
+                  <Video
+                    source={{uri: data.uri}}
+                    paused
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Image
+                    source={{uri: data.uri, cache: 'force-cache'}}
+                    style={styles.image}
+                  />
+                )}
+              </View>
+              {selected && (
+                <Checkbox
+                  status="checked"
+                  onPress={() => toggleSelect(data.uri)}
+                  style={styles.checkbox}
+                />
+              )}
+              {/\.(mp4)$/i.test(data.name) && (
+                <Text style={styles.playIcon}>▶️</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     );
+  };
+
+  // Clear saved folder and force re-pick
+  const clearSavedFolder = async () => {
+    console.log('🗑️ Clearing saved folder...');
+    try {
+      await StatusModule.clearSavedTreeUri();
+      await AsyncStorage.removeItem('folderPicked');
+      await AsyncStorage.removeItem('currentApp');
+      console.log('✅ Cleared treeUri, folderPicked, and currentApp');
+
+      setSavedTreeUri(null);
+      setFolderPicked(false);
+      setFiles([]);
+      setSources([]);
+      setMedia([]);
+      setDisplayData([]);
+      setCurrent(null);
+
+      console.log('🔄 State reset');
+      Alert.alert(
+        'Success',
+        'Saved folder has been cleared. Please pick a new folder.',
+      );
+    } catch (error) {
+      console.error('❌ Failed to clear saved folder:', error);
+      Alert.alert('Error', 'Failed to clear saved folder.');
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Status Saver</Text>
-      <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-        <Text style={{color: '#1976d2', textAlign: 'right'}}>⚙️ Settings</Text>
-      </TouchableOpacity>
-      {!folderPicked && files.length === 0 && (
-        <TouchableOpacity style={styles.btn} onPress={pickFolder}>
-          <Text style={{color: '#fff'}}>Pick Android/media Folder</Text>
-        </TouchableOpacity>
-      )}
-      {!!sources.length && (
-        <View style={styles.tabs}>
-          {sources.map(s => {
-            const count = files.filter(f => f.app === s).length;
-            return (
-              <TouchableOpacity
-                key={s}
-                onPress={() => setCurrent(s)}
-                style={[styles.tab, current === s && styles.activeTab]}>
-                <Text style={{color: current === s ? '#fff' : '#000'}}>
-                  {s} ({count})
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1976d2" />
+        </View>
+      ) : (
+        <>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+              <Text style={{color: '#1976d2'}}>⚙️ Settings</Text>
+            </TouchableOpacity>
+
+            {savedTreeUri && (
+              <TouchableOpacity onPress={clearSavedFolder}>
+                <Text style={{color: '#ff4444', marginLeft: 16}}>
+                  🔄 Change Folder
                 </Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
+            )}
+          </View>
+
+          {!folderPicked && files.length === 0 && (
+            <TouchableOpacity style={styles.btn} onPress={pickFolder}>
+              <Text style={styles.btnText}>Pick Android/media Folder</Text>
+            </TouchableOpacity>
+          )}
+
+          {savedTreeUri && !folderPicked && (
+            <Text style={styles.savedFolderInfo}>
+              📁 Using previously selected folder
+            </Text>
+          )}
+
+          {!!sources.length && (
+            <View style={styles.tabs}>
+              {sources.map(s => {
+                const count = files.filter(f => f.app === s).length;
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => {
+                      setCurrent(s);
+                      saveCurrentApp(s);
+                    }}
+                    style={[styles.tab, current === s && styles.activeTab]}>
+                    <Text style={{color: current === s ? '#fff' : '#000'}}>
+                      {s} ({count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {media.length ? (
+            <FlashList
+              data={displayData}
+              renderItem={renderItem}
+              keyExtractor={(item, index) =>
+                item.type === 'ad' ? item.id : `row-${index}`
+              }
+              estimatedItemSize={itemSize}
+              numColumns={1}
+              contentContainerStyle={styles.gallery}
+              initialNumToRender={20}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              viewabilityConfig={{itemVisiblePercentThreshold: 50}}
+              extraData={selectedItems}
+            />
+          ) : folderPicked ? (
+            <Text style={styles.empty}>
+              No media found for {current || 'selected app'}
+            </Text>
+          ) : null}
+
+          {/* Selection Bar */}
+          {Object.values(selectedItems).some(Boolean) && (
+            <View style={styles.selectionBar}>
+              <Text style={styles.selectionText}>
+                {Object.values(selectedItems).filter(Boolean).length} selected
+              </Text>
+              <Button
+                onPress={handleSelectionSave}
+                mode="contained"
+                color="green">
+                Save
+              </Button>
+              <Button
+                onPress={handleSelectionShareAsStatus}
+                mode="contained"
+                color="blue">
+                Share as Status
+              </Button>
+              <Button
+                onPress={handleSelectionDelete}
+                mode="contained"
+                color="red">
+                Delete
+              </Button>
+              <Button onPress={clearSelection} mode="text" color="white">
+                Clear
+              </Button>
+            </View>
+          )}
+        </>
       )}
-      {media.length ? (
-        <FlatList
-          data={media}
-          renderItem={renderItem}
-          keyExtractor={(item, index) =>
-            item.type === 'media' ? item.data.uri : item.id
-          }
-          numColumns={3}
-          contentContainerStyle={[styles.gallery, {justifyContent: 'center'}]}
-        />
-      ) : folderPicked ? (
-        <Text style={styles.empty}>No media found for {current}</Text>
-      ) : null}
-      {Object.values(selected).some(v => v) && (
-        <View style={styles.actions}>
-          <TouchableOpacity onPress={handleSave}>
-            <Text>✅ save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleUseStatus}>
-            <Text>📥 Use as Status</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+
       {renderPreview()}
+
+      {/* Snackbar */}
+      <Snackbar
+        visible={!!snackbarMsg}
+        onDismiss={() => setSnackbarMsg('')}
+        duration={3000}>
+        {snackbarMsg}
+      </Snackbar>
+
       <Modal
         visible={showTutorial}
         transparent
@@ -319,8 +694,8 @@ export default function StatusSaver() {
               files.
             </Text>
             <Text style={styles.tutorialNote}>
-              Note: You can refresh statuses via the Settings screen (⚙️) or by
-              revisiting this screen.
+              Note: Your folder selection will be saved for future use. You can
+              change it anytime via Settings or by clearing the folder.
             </Text>
             <TouchableOpacity
               style={styles.tutorialButton}
@@ -335,14 +710,37 @@ export default function StatusSaver() {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, padding: 20, backgroundColor: '#fff'},
-  title: {fontSize: 24, textAlign: 'center'},
+  container: {flex: 1, backgroundColor: '#fff'},
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 8,
+  },
   btn: {
     backgroundColor: '#1976d2',
     padding: 12,
     alignItems: 'center',
     marginVertical: 10,
     borderRadius: 6,
+    marginHorizontal: 16,
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  savedFolderInfo: {
+    textAlign: 'center',
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 10,
   },
   tabs: {
     flexDirection: 'row',
@@ -354,41 +752,47 @@ const styles = StyleSheet.create({
   activeTab: {backgroundColor: '#1976d2'},
   gallery: {
     paddingHorizontal: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  imageWrapper: {
-    margin: 4,
-    width: 110,
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
   },
-  image: {width: 100, height: 100, borderRadius: 6},
+  itemContainer: {
+    width: itemSize,
+    height: itemSize,
+    margin: 2,
+    borderRadius: 10,
+    backgroundColor: '#eee',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  mediaContainer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
   playIcon: {
     position: 'absolute',
     top: 4,
     left: 4,
     fontSize: 20,
     color: '#fff',
+    zIndex: 1,
   },
-  checkboxContainer: {
+  checkbox: {
     position: 'absolute',
-    top: 5,
-    right: 5,
+    top: 4,
+    left: 4,
     zIndex: 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#000',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 10,
   },
   empty: {textAlign: 'center', marginTop: 20, color: '#888'},
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 10,
-    borderTopWidth: 1,
-  },
   preview: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -410,7 +814,22 @@ const styles = StyleSheet.create({
   adContainer: {
     alignItems: 'center',
     marginVertical: 10,
-    width: SCREEN_WIDTH,
+    width: '100%',
+  },
+  selectionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#222',
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  selectionText: {
+    color: 'white',
+    fontSize: 15,
   },
   tutorialOverlay: {
     flex: 1,
