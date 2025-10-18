@@ -1,0 +1,8 @@
+<resources>
+    <string-array name="sort_options">
+        <item>Date: New-Old</item>
+        <item>Date: Old-New</item>
+        <item>Size: Big-Small</item>
+        <item>Size: Small-Big</item>
+    </string-array>
+</resources>

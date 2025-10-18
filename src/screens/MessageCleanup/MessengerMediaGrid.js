@@ -11,6 +11,7 @@ import {
   Modal,
   SafeAreaView,
   Linking,
+  TextInput,
 } from 'react-native';
 import {
   IconButton,
@@ -23,7 +24,6 @@ import {
   Surface,
   Portal,
   Dialog,
-  TextInput,
 } from 'react-native-paper';
 import {useFocusEffect} from '@react-navigation/native';
 import {NativeModules} from 'react-native';
@@ -69,8 +69,9 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
   const loadSubfolders = async () => {
     try {
       const result = await StatusModule.listMediaFolders(selectedMessenger);
+      console.log('Loaded subfolders:', result);
       setFolders(result || []);
-      if (result?.length) {
+      if (result?.length > 0) {
         setSelectedFolder(result[0]);
       }
     } catch (e) {
@@ -85,13 +86,30 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
       return;
     }
 
+    console.log(
+      'Loading files for folder:',
+      folderName,
+      'reset:',
+      reset,
+      'offset:',
+      offset,
+    );
+
     if (reset) {
       setLoading(true);
       setOffset(0);
       setMediaFiles([]);
       setHasMore(true);
     } else {
-      if (!hasMore || loadingMore) return;
+      if (!hasMore || loadingMore) {
+        console.log(
+          'Skipping load more: hasMore=',
+          hasMore,
+          'loadingMore=',
+          loadingMore,
+        );
+        return;
+      }
       setLoadingMore(true);
     }
     setSelectedFolder(folderName);
@@ -103,6 +121,16 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
       const maxSizeBytes = maxSize
         ? parseFloat(maxSize) * 1024 * 1024
         : Number.MAX_SAFE_INTEGER;
+      console.log('Calling getMediaInFolderPaged with params:', {
+        appKey: selectedMessenger,
+        folderName,
+        offset: reset ? 0 : offset,
+        limit: PAGE_SIZE,
+        minDate,
+        maxDate,
+        minSizeBytes,
+        maxSizeBytes,
+      });
       const result = await StatusModule.getMediaInFolderPaged(
         selectedMessenger,
         folderName,
@@ -113,11 +141,18 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
         minSizeBytes,
         maxSizeBytes,
       );
+      console.log('Received result:', result);
       const items = result.items || [];
+      console.log('Items length:', items.length);
       const sorted = sortItems(items);
-      setMediaFiles(prev => (reset ? sorted : [...prev, ...sorted]));
+      setMediaFiles(prev => {
+        const newFiles = reset ? sorted : [...prev, ...sorted];
+        console.log('Updated mediaFiles length:', newFiles.length);
+        return newFiles;
+      });
       setOffset(prev => prev + items.length);
       setHasMore(items.length === PAGE_SIZE);
+      console.log('Updated hasMore:', items.length === PAGE_SIZE);
     } catch (e) {
       console.error('❌ Load files error:', e);
       setSnackbarMsg('Failed to load media files');
@@ -149,6 +184,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
         rows.push({type: 'ad_row', id: `ad-${index}`});
       }
     });
+    console.log('Flattened data length:', rows.length);
     setFlatData(rows);
   };
 
@@ -353,22 +389,34 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.chipsScrollView}>
-          {folders.map(folder => (
-            <Chip
-              key={folder}
-              selected={folder === selectedFolder}
-              onPress={() => setSelectedFolder(folder)}
-              style={styles.chip}
-              mode={folder === selectedFolder ? 'flat' : 'outlined'}>
-              <Text
-                variant="labelMedium"
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[styles.chipText, {color: theme.colors.onSurface}]}>
-                {folder.replace(/.*\//, '')}
-              </Text>
-            </Chip>
-          ))}
+          {folders.map(folder => {
+            const cleanFolderName = folder.replace(
+              /.*\/(WhatsApp|WhatsApp Business|Telegram|TikTok|Xender)\/(Media)?\//i,
+              '',
+            );
+            return (
+              <Chip
+                key={folder}
+                selected={folder === selectedFolder}
+                onPress={() => {
+                  setSelectedFolder(folder);
+                  // Refresh data for new folder if filters are set
+                  if (startDate || endDate || minSize || maxSize) {
+                    loadFilesInFolder(folder, true);
+                  }
+                }}
+                style={styles.chip}
+                mode={folder === selectedFolder ? 'flat' : 'outlined'}>
+                <Text
+                  variant="labelMedium"
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[styles.chipText, {color: theme.colors.onSurface}]}>
+                  {cleanFolderName || folder.replace(/.*\//, '')}
+                </Text>
+              </Chip>
+            );
+          })}
         </ScrollView>
         <View style={styles.buttonRow}>
           <IconButton
@@ -412,7 +460,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
                 windowSize={5}
                 viewabilityConfig={{itemVisiblePercentThreshold: 50}}
                 extraData={selectedItems}
-                numColumns={1} // Set to 1 since rows are handled manually
+                numColumns={1}
                 ListFooterComponent={
                   hasMore && mediaFiles.length > 0 ? (
                     <Button
@@ -675,6 +723,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+
   videoBox: {
     flex: 1,
     justifyContent: 'center',
@@ -688,7 +737,7 @@ const styles = StyleSheet.create({
     bottom: 4,
     right: 4,
     fontSize: 11,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
     borderRadius: 4,
     overflow: 'hidden',
   },

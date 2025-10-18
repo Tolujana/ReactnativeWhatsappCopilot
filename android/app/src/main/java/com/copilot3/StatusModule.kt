@@ -42,6 +42,14 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
             "tiktok" to listOf("com.zhiliaoapp.musically"),
             "xender" to listOf("cn.xender")
         )
+
+        val MEDIA_PATHS = mapOf(
+            "whatsapp" to "WhatsApp",
+            "business" to "WhatsApp Business",
+            "telegram" to "Telegram",
+            "tiktok" to "",
+            "xender" to ""
+        )
     }
 
     private var statusPromise: Promise? = null
@@ -228,22 +236,28 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.d("StatusModule", "getMediaInFolderPaged called for $appKey/$folderName, offset=$offset, limit=$limit")
                 val baseUri = getSelectedFolderUri(appKey)
                 val baseDoc = DocumentFile.fromTreeUri(reactContext, baseUri)
                 if (baseDoc == null || !baseDoc.isDirectory) {
+                    Log.e("StatusModule", "Base folder not accessible for $appKey")
                     promise.reject("URI_ERROR", "Base folder not accessible")
                     return@launch
                 }
 
-                val mediaPath = listOf(appKeyToPackageFolder(appKey), "WhatsApp", "Media", folderName)
+                val mediaPath = getMediaPathForApp(appKey, folderName)
                 val folderDoc = findSubDirByPath(baseDoc, mediaPath)
 
                 if (folderDoc == null || !folderDoc.isDirectory) {
+                    Log.e("StatusModule", "Folder not found: $appKey/$folderName")
                     promise.reject("FOLDER_NOT_FOUND", "Could not find folder: $folderName")
                     return@launch
                 }
 
-                val files = folderDoc.listFiles()
+                val allFiles = folderDoc.listFiles()
+                Log.d("StatusModule", "Found ${allFiles.size} files in $folderName")
+
+                val filteredFiles = allFiles
                     .filter { it.isFile }
                     .filter { minDate == 0.0 || it.lastModified().toDouble() >= minDate }
                     .filter { maxDate == 0.0 || it.lastModified().toDouble() <= maxDate }
@@ -251,12 +265,15 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
                     .filter { maxSize == 0.0 || it.length().toDouble() <= maxSize }
                     .drop(offset)
                     .take(limit)
+
+                Log.d("StatusModule", "Filtered and paginated: ${filteredFiles.size} items")
+
                 val items = Arguments.createArray()
                 var totalSize = 0L
 
-                for (file in files) {
+                for (file in filteredFiles) {
                     val map = Arguments.createMap()
-                    map.putString("name", file.name)
+                    map.putString("name", file.name ?: "Unknown")
                     map.putString("uri", file.uri.toString())
                     map.putString("path", file.uri.toString())
                     map.putBoolean("isDirectory", false)
@@ -273,12 +290,29 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
                 val result = Arguments.createMap()
                 result.putArray("items", items)
                 result.putDouble("totalSize", totalSize.toDouble())
+                result.putInt("totalCount", allFiles.size) // Total before pagination
                 promise.resolve(result)
-
             } catch (e: Exception) {
                 Log.e("StatusModule", "❌ getMediaInFolderPaged failed", e)
                 promise.reject("FOLDER_LOAD_FAIL", e.message, e)
             }
+        }
+    }
+
+    private fun getMediaPathForApp(appKey: String, folderName: String): List<String> {
+        val basePath = listOf(appKeyToPackageFolder(appKey))
+        val mediaAppPath = when (appKey.lowercase()) {
+            "whatsapp" -> "WhatsApp"
+            "business" -> "WhatsApp Business"
+            "telegram" -> "Telegram"
+            "tiktok" -> ""
+            "xender" -> ""
+            else -> ""
+        }
+        return if (mediaAppPath.isNotEmpty()) {
+            basePath + mediaAppPath + "Media" + folderName
+        } else {
+            basePath + "Media" + folderName
         }
     }
 
@@ -369,7 +403,7 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun postToWhatsappStatus(uriString: String, promise: Promise) {
+    fun postToWhatsAppStatus(uriString: String, promise: Promise) {
         try {
             val uri = Uri.parse(uriString)
             val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -396,16 +430,18 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
                 val mediaRoot = File(Environment.getExternalStorageDirectory(), "Android/media")
                 for ((key, parts) in CLEANUP_PATHS) {
                     val dir = parts.fold(mediaRoot) { acc, part -> File(acc, part) }
-                    dir.walkTopDown().filter {
-                        it.isFile && it.name.matches(Regex(""".*\.(jpg|jpeg|png|webp|mp4)""", RegexOption.IGNORE_CASE))
-                    }.forEach { file ->
-                        val map = WritableNativeMap().apply {
-                            putString("app", key)
-                            putString("uri", Uri.fromFile(file).toString())
-                            putString("name", file.name)
-                            putDouble("timestamp", file.lastModified().toDouble())
+                    if (dir.exists() && dir.isDirectory) {
+                        dir.walkTopDown().filter {
+                            it.isFile && it.name.matches(Regex(""".*\.(jpg|jpeg|png|webp|mp4)""", RegexOption.IGNORE_CASE))
+                        }.forEach { file ->
+                            val map = WritableNativeMap().apply {
+                                putString("app", key)
+                                putString("uri", Uri.fromFile(file).toString())
+                                putString("name", file.name)
+                                putDouble("timestamp", file.lastModified().toDouble())
+                            }
+                            resultArray.pushMap(map)
                         }
-                        resultArray.pushMap(map)
                     }
                 }
                 promise.resolve(resultArray)
@@ -429,14 +465,14 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
             logDocumentTree(root)
 
             for ((appKey, parts) in CLEANUP_PATHS) {
-                val mediaFolder = findSubDirByPath(root, parts.dropLast(1))
+                val mediaFolder = findSubDirByPath(root, parts)
                 if (mediaFolder == null || !mediaFolder.isDirectory) {
                     Log.d("StatusModule", "❌ Media folder not found for $appKey")
                     continue
                 }
 
                 Log.d("StatusModule", "📦 Found Media folder for $appKey: ${mediaFolder.uri}")
-                collectMediaFilesRecursively(mediaFolder, appKey, resultArray)
+                collectMediaFilesRecursively(mediaFolder, appKey, resultArray, maxFiles = 500)
             }
 
             Log.d("StatusModule", "✅ Resolving with ${resultArray.size()} items")
@@ -499,7 +535,7 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
             }
 
             for ((appKey, parts) in CLEANUP_PATHS) {
-                val mediaFolder = findSubDirByPath(root, parts.dropLast(1))
+                val mediaFolder = findSubDirByPath(root, parts)
                 if (mediaFolder == null || !mediaFolder.isDirectory) {
                     Log.d("StatusModule", "❌ Media folder not found for $appKey")
                     continue
@@ -689,7 +725,7 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
             Log.d("StatusModule", "📦 Scanning media for cleanup ($key): ${mediaFolder.uri}")
             mediaFolder.listFiles().forEach { file ->
                 if (file.isDirectory && file.name != ".Statuses") {
-                    collectMediaFilesRecursively(file, key, resultArray)
+                    collectMediaFilesRecursively(file, key, resultArray, maxFiles = 500)
                 }
             }
         }
@@ -756,20 +792,20 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun listMediaFolders(appKey: String, promise: Promise) {
         try {
-            val rootUri = getSelectedFolderUri(appKey)
-            val rootDoc = DocumentFile.fromTreeUri(reactContext, rootUri)
-
-            if (rootDoc == null || !rootDoc.isDirectory) {
-                promise.reject("ROOT_ACCESS_ERROR", "Could not access base folder: $rootUri")
+            val baseUri = getSelectedFolderUri(appKey)
+            val baseDoc = DocumentFile.fromTreeUri(reactContext, baseUri)
+            if (baseDoc == null || !baseDoc.isDirectory) {
+                promise.reject("ROOT_ACCESS_ERROR", "Could not access base folder: $baseUri")
                 return
             }
 
-            val mediaFolder = findSubDirByPath(
-                rootDoc,
-                listOf(appKeyToPackageFolder(appKey), "WhatsApp", "Media")
-            )
+            val basePath = listOf(appKeyToPackageFolder(appKey))
+            val mediaAppPath = MEDIA_PATHS[appKey] ?: ""
+            val mediaPath = if (mediaAppPath.isNotEmpty()) basePath + mediaAppPath + "Media" else basePath + "Media"
+            val mediaFolder = findSubDirByPath(baseDoc, mediaPath)
 
             if (mediaFolder == null || !mediaFolder.isDirectory) {
+                Log.e("StatusModule", "❌ Media folder not found for $appKey at path $mediaPath")
                 promise.reject("MEDIA_FOLDER_NOT_FOUND", "Media folder not found")
                 return
             }
@@ -778,6 +814,7 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
                 .filter { it.isDirectory }
                 .mapNotNull { it.name }
 
+            Log.d("StatusModule", "✅ Found ${folderNames.size} media folders for $appKey: $folderNames")
             promise.resolve(Arguments.fromList(folderNames))
         } catch (e: Exception) {
             Log.e("StatusModule", "❌ Failed to list media folders", e)
@@ -786,11 +823,27 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun launchMessengerMedia(appKey: String) {
-        val intent = Intent(reactContext, MessengerMediaActivity::class.java)
-        intent.putExtra("appKey", appKey)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        reactContext.startActivity(intent)
+    fun launchMessengerMedia(appKey: String, folderName: String, minDate: Double, maxDate: Double, minSize: Double, maxSize: Double, promise: Promise) {
+        try {
+            val intent = Intent(reactContext, MessengerMediaActivity::class.java).apply {
+                putExtra("appKey", appKey)
+                putExtra("folderName", folderName)
+                putExtra("minDate", minDate.toLong())
+                putExtra("maxDate", maxDate.toLong())
+                putExtra("minSize", minSize.toLong())
+                putExtra("maxSize", maxSize.toLong())
+            }
+            val activity = currentActivity
+            if (activity != null) {
+                activity.startActivityForResult(intent, 10002)
+                promise.resolve(true)
+            } else {
+                promise.reject("NO_ACTIVITY", "Activity is null")
+            }
+        } catch (e: Exception) {
+            Log.e("StatusModule", "Failed to launch MessengerMediaActivity", e)
+            promise.reject("LAUNCH_FAILED", e.message)
+        }
     }
 
     @ReactMethod
@@ -803,9 +856,12 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
                 return
             }
 
-            val target = findSubDirByPath(baseDoc, listOf(appKeyToPackageFolder(appKey), "WhatsApp", "Media"))
+            val basePath = listOf(appKeyToPackageFolder(appKey))
+            val mediaAppPath = MEDIA_PATHS[appKey] ?: ""
+            val baseMediaPath = if (mediaAppPath.isNotEmpty()) basePath + mediaAppPath + "Media" else basePath + "Media"
+            val target = findSubDirByPath(baseDoc, baseMediaPath)
             if (target == null) {
-                promise.reject("FOLDER_ERROR", "WhatsApp Media folder not found")
+                promise.reject("FOLDER_ERROR", "Media folder not found")
                 return
             }
 
@@ -820,11 +876,15 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     private fun findSubDirByPath(root: DocumentFile?, path: List<String>): DocumentFile? {
         var current = root
         for (segment in path) {
-            current = current?.listFiles()?.firstOrNull {
-                it.isDirectory && it.name.equals(segment, ignoreCase = true)
-            }
+            if (current == null) return null
+            current = current.findFile(segment)
+            if (current == null || !current.isDirectory) return null
         }
         return current
+    }
+
+    private fun DocumentFile.findFile(name: String): DocumentFile? {
+        return listFiles().firstOrNull { it.name.equals(name, ignoreCase = true) }
     }
 
     private fun logDocumentTree(dir: DocumentFile, indent: String = "") {
@@ -851,7 +911,7 @@ class StatusModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun getSelectedFolderUri(appKey: String): Uri {
-        val prefs = reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val uriStr = prefs.getString(KEY_URI, null)
             ?: throw IllegalStateException("No SAF folder selected")
         Log.d("StatusModule", "📥 Loaded persisted URI for app [$appKey]: $uriStr")
