@@ -72,7 +72,7 @@ const CampaignSelectionScreen = ({navigation, route, toggleTheme}) => {
         {(index + 1) % 3 === 0 && (
           <View style={styles.bannerContainer}>
             <BannerAd
-              unitId="ca-app-pub-3940256099942544/6300978111"
+              unitId="ca-app-pub-7993847549836206/9152830275"
               size={BannerAdSize.BANNER}
             />
           </View>
@@ -87,7 +87,7 @@ const CampaignSelectionScreen = ({navigation, route, toggleTheme}) => {
       <Header toggleTheme={toggleTheme} showBackButton={true} />
       <View style={styles.bannerContainer}>
         <BannerAd
-          unitId="ca-app-pub-3940256099942544/6300978111"
+          unitId="ca-app-pub-7993847549836206/9152830275"
           size={BannerAdSize.BANNER}
         />
       </View>

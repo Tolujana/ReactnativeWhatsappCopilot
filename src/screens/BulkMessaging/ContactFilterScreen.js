@@ -1,4 +1,8 @@
-import React, {useCallback, useEffect, useState} from 'react';
+/* ContactFilterScreen.js
+   Updated: Notifee scheduling + background auto-send fallback
+*/
+
+import React, {useCallback, useEffect, useState, useRef} from 'react';
 import {
   View,
   Text,
@@ -6,6 +10,7 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import {
   Checkbox,
@@ -32,11 +37,18 @@ import {useFocusEffect} from '@react-navigation/native';
 import MessageEditorModal from '../../components/MessageEditor';
 import {BannerAd, BannerAdSize, TestIds} from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import notifee, {
+  TriggerType,
+  TimestampTrigger,
+  EventType,
+} from '@notifee/react-native';
 
 // Storage keys
 const SETTINGS_KEYS = {
   WHATSAPP_PACKAGE: 'whatsapp_package',
   NEEDS_HELP: 'needs_help',
+  SCHEDULED_MESSAGES_KEY: 'scheduled_messages_v1',
 };
 
 const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
@@ -54,6 +66,18 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   const [whatsappPackage, setWhatsappPackage] = useState('com.whatsapp');
   const [loading, setLoading] = useState(true);
   const [points, setPoints] = useState(0);
+
+  // Scheduling UI state - Separate date and time pickers
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(null);
+  const [scheduledTime, setScheduledTime] = useState(() => {
+    const defaultTime = new Date();
+    defaultTime.setHours(10, 0, 0, 0);
+    defaultTime.setDate(defaultTime.getDate()); // today
+    return defaultTime;
+  });
+  const pendingScheduleRef = useRef(null); // store pending payload while user picks date
 
   // Your actual ad unit IDs (replace with your own)
   const AD_UNIT_TOP = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
@@ -78,7 +102,6 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   };
 
-  // Save WhatsApp package setting
   const saveWhatsappPackage = async packageName => {
     try {
       setWhatsappPackage(packageName);
@@ -89,7 +112,6 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   };
 
-  // Save needs help setting
   const saveNeedsHelp = async value => {
     try {
       setNeedsHelp(value);
@@ -104,7 +126,11 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   };
 
   const openSettings = () => {
-    AccessibilityHelper.openAccessibilitySettings();
+    try {
+      AccessibilityHelper.openAccessibilitySettings();
+    } catch (e) {
+      console.warn('openSettings failed', e);
+    }
   };
 
   const openEditorForContacts = contactsToEdit => {
@@ -128,7 +154,19 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     useCallback(() => {
       fetchPoints();
       preloadRewardedAd();
-      loadSettings(); // Load settings when screen focuses
+      loadSettings();
+      // ensure notifee channel exists
+      (async () => {
+        try {
+          await notifee.createChannel({
+            id: 'scheduled-messages',
+            name: 'Scheduled Messages',
+            importance: 4,
+          });
+        } catch (e) {
+          console.warn('notifee channel create failed', e);
+        }
+      })();
     }, []),
   );
 
@@ -152,6 +190,45 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     fetchContacts();
   }, [campaign.id]);
 
+  // Listen for foreground notification press events to handle fallback
+  useEffect(() => {
+    const unsubscribe = notifee.onForegroundEvent(({type, detail}) => {
+      // EventType.PRESS is numeric in older versions; use EventType.PRESS from notifee if needed
+      if (
+        type === EventType.PRESS &&
+        detail.notification?.data?.scheduledJobId
+      ) {
+        // If notification contains scheduled job id, attempt to send now (fallback)
+        handleNotificationSendFallback(detail.notification.data);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Helper: when user taps notification fallback, send messages now (in foreground)
+  const handleNotificationSendFallback = async data => {
+    try {
+      const parsed =
+        typeof data.payload === 'string'
+          ? JSON.parse(data.payload)
+          : data.payload;
+      if (!parsed || !parsed.personalizedMessages) {
+        Alert.alert('Scheduled job data missing');
+        return;
+      }
+
+      const personalizedMessages = parsed.personalizedMessages;
+      // try to send — this will use your existing logic (Accessibility / overlay checked inside launchWhatsappMessage)
+      launchWhatsappMessage(personalizedMessages, whatsappPackage);
+    } catch (e) {
+      console.error('Fallback send failed', e);
+      Alert.alert(
+        'Send failed',
+        'Could not send scheduled messages automatically.',
+      );
+    }
+  };
+
   const toggleSelect = useCallback(contactId => {
     if (!contactId) return;
 
@@ -166,6 +243,349 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   }, []);
 
+  // Utility to replace placeholders
+  function replaceContactPlaceholders(template, contact) {
+    const replacements = {
+      '{{name}}': contact.name || '',
+      '{{phone}}': contact.phone || '',
+    };
+
+    if (contact.extra_field) {
+      try {
+        const extrafield = JSON.parse(contact.extra_field);
+        Object.keys(extrafield).forEach(key => {
+          replacements[`{{${key}}}`] = extrafield[key] || '';
+        });
+      } catch (e) {
+        console.warn('Failed to parse extra_field:', e);
+      }
+    }
+
+    const delimiter = '$@#__DELIMITER__#@%';
+    const joinedString = template.join(delimiter);
+
+    if (joinedString.length > 1000) {
+      Alert.alert('Error', 'Text is too long. Please reduce the message size.');
+      return null;
+    }
+
+    let replacedString = joinedString;
+    Object.keys(replacements).forEach(placeholder => {
+      replacedString = replacedString.replaceAll(
+        placeholder,
+        replacements[placeholder],
+      );
+    });
+
+    return replacedString.split(delimiter).map(segment => segment.trim());
+  }
+
+  // Schedule notification (Notifee) and save scheduled job to DB via insertSentMessage
+  const scheduleNotificationAndSave = async (
+    personalizedMessages,
+    selectedIds,
+    whenDate,
+  ) => {
+    // prepare payload
+    const scheduledPayload = {
+      isScheduled: true,
+      scheduledTime: whenDate.toISOString(),
+      campaignId: campaign.id,
+      personalizedMessages, // array of {phone, message[], name, mediaPath}
+      selectedIds,
+    };
+
+    try {
+      // 1) create database record (store payload as data)
+
+      const rowId = await insertSentMessage(
+        [{...scheduledPayload, sent: false}],
+        new Date().toISOString(),
+      );
+      // The insertSentMessage currently returns id of row
+      // We attach that id to the notification data for reference
+      const notificationId = `scheduled-${rowId || Date.now()}`;
+
+      // 2) schedule notifee trigger
+      const trigger = {
+        type: TriggerType.TIMESTAMP,
+        timestamp: whenDate.getTime(),
+      };
+
+      await notifee.createTriggerNotification(
+        {
+          id: notificationId,
+          title: 'Scheduled messages: ready to send',
+          body: `Scheduled ${
+            personalizedMessages.length
+          } message(s) — sending at ${whenDate.toLocaleString()}`,
+          android: {
+            channelId: 'scheduled-messages',
+            pressAction: {id: 'default'},
+            // allow while idle for Doze (best-effort)
+            allowWhileIdle: true,
+          },
+          // embed job data (stringify to be safe)
+          data: {
+            scheduledJobId: String(rowId || notificationId),
+            payload: JSON.stringify(scheduledPayload),
+          },
+        },
+        trigger,
+      );
+
+      return {rowId, notificationId};
+    } catch (e) {
+      console.error('scheduleNotificationAndSave failed', e);
+      throw e;
+    }
+  };
+
+  // Complete scheduling with both date and time
+  const completeScheduling = async (date, time) => {
+    const pending = pendingScheduleRef.current;
+    if (!pending) {
+      Alert.alert('Error', 'No scheduled job found.');
+      return;
+    }
+
+    const {personalizedMessages, selectedIds} = pending;
+    setIsSending(true);
+
+    try {
+      const when = new Date(date);
+      when.setHours(time.getHours());
+      when.setMinutes(time.getMinutes());
+      when.setSeconds(0);
+      when.setMilliseconds(0);
+
+      const reserveResult = await reservePointsForMessagesByIds(selectedIds);
+      if (reserveResult?.new_balance !== undefined)
+        setPoints(reserveResult.new_balance);
+      else if (typeof reserveResult === 'number') setPoints(reserveResult);
+
+      await scheduleNotificationAndSave(
+        personalizedMessages,
+        selectedIds,
+        when,
+      );
+
+      Alert.alert(
+        'Scheduled',
+        `Messages scheduled for ${when.toLocaleString()}`,
+      );
+    } catch (e) {
+      console.error('Schedule error', e);
+
+      // handle insufficient points
+      if (e.code === 'INSUFFICIENT_POINTS') {
+        setIsSending(false);
+        return handleInsufficientPoints(e);
+      }
+      Alert.alert(
+        'Schedule failed',
+        'Could not schedule messages; please try again.',
+      );
+    } finally {
+      pendingScheduleRef.current = null;
+      setTempDate(null);
+      setIsSending(false);
+    }
+  };
+
+  // Date picked handler
+  const onDatePicked = (event, date) => {
+    setShowDatePicker(false);
+
+    if (event.type === 'dismissed' || !date) {
+      pendingScheduleRef.current = null;
+      return;
+    }
+
+    setTempDate(date);
+    setShowTimePicker(true);
+  };
+
+  // Time picked handler
+  const onTimePicked = (event, time) => {
+    setShowTimePicker(false);
+
+    if (event.type === 'dismissed' || !time) {
+      pendingScheduleRef.current = null;
+      setTempDate(null);
+      return;
+    }
+
+    completeScheduling(tempDate, time);
+  };
+
+  // Main send handler (keeps your original flow but integrates schedule)
+  const handleSendMessages1 = async () => {
+    if (isSending) return;
+    setIsSending(true);
+
+    const contactsToSend = contacts.filter(
+      contact => selectedContacts[contact.id],
+    );
+
+    if (contactsToSend.length === 0) {
+      Alert.alert('No Contacts', 'Please select at least one contact.');
+      setIsSending(false);
+      return;
+    }
+
+    const selectedIds = contactsToSend.map(c => c.id);
+
+    // Build personalized messages now so we store/launch same payload later
+    const personalizedMessages = contactsToSend
+      .map(contact => {
+        const messages = replaceContactPlaceholders(
+          templateList[contact.id] || message,
+          contact,
+        );
+        if (!messages) return null;
+        return {
+          phone: contact.phone,
+          message: messages,
+          name: contact.name,
+          mediaPath: contact.mediaPath,
+        };
+      })
+      .filter(msg => msg !== null);
+
+    if (personalizedMessages.length === 0) {
+      Alert.alert('Error', 'No valid messages could be generated.');
+      setIsSending(false);
+      return;
+    }
+
+    // Ask user whether to Send Now or Schedule
+    Alert.alert(
+      'Send Type',
+      'Do you want to send messages now !',
+      [
+        {
+          text: 'Dont Send',
+          style: 'cancel',
+          onPress: () => setIsSending(false),
+        },
+        {
+          text: 'Send Now',
+          onPress: async () => {
+            // Send Now flow:
+            try {
+              // Permission checks
+              if (needsHelp) {
+                const enabled = await checkAccessibilityPermission();
+                if (!enabled) {
+                  Alert.alert(
+                    'Permission Required',
+                    'Accessibility is required for automated sending. Please enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openSettings},
+                    ],
+                  );
+                  return;
+                }
+              } else {
+                const overlayGranted = await checkOverlayPermission();
+                if (!overlayGranted) {
+                  Alert.alert(
+                    'Overlay Permission Required',
+                    'Overlay permission is required for manual sending. Enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openOverlaySettings},
+                    ],
+                  );
+                  return;
+                }
+              }
+
+              // Reserve / deduct points (immediately before actual send)
+              try {
+                const newBalance = await reservePointsForMessagesByIds(
+                  selectedIds,
+                );
+                if (newBalance?.new_balance !== undefined) {
+                  // some bridges return more complex object, but your JS wrapper returns a value
+                  // update points using whatever shape you get
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                  else if (newBalance.new_balance)
+                    setPoints(newBalance.new_balance);
+                } else {
+                  // if reserve returned a number
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                }
+              } catch (reserveErr) {
+                // handle insufficient points
+                if (reserveErr && reserveErr.code === 'INSUFFICIENT_POINTS') {
+                  setIsSending(false);
+                  return handleInsufficientPoints(reserveErr);
+                }
+                throw reserveErr;
+              }
+
+              // Insert into sentmessages log (immediate send) - store payload for reporting
+              try {
+                await insertSentMessage(
+                  [
+                    {
+                      isScheduled: false,
+                      scheduledTime: null,
+                      campaignId: campaign.id,
+                      personalizedMessages,
+                    },
+                  ],
+                  new Date().toISOString(),
+                );
+              } catch (e) {
+                console.warn(
+                  'Failed to insertSentMessage log for immediate send',
+                  e,
+                );
+              }
+
+              // Launch send (your existing function handles the details)
+              launchWhatsappMessage(personalizedMessages, whatsappPackage);
+              navigation.navigate('WhatsappResultScreen', {
+                totalContacts: personalizedMessages,
+                whatsappPackage,
+              });
+            } catch (e) {
+              console.error('Send Now error', e);
+              Alert.alert('Error', String(e.message || e));
+            } finally {
+              setIsSending(false);
+            }
+          },
+        },
+        // {
+        //   text: 'Schedule',
+        //   onPress: async () => {
+        //     // Schedule flow:
+        //     // We'll keep UI open for user to pick a date/time
+        //     // Save the pending payload into a ref while user picks date
+        //     pendingScheduleRef.current = {personalizedMessages, selectedIds};
+        //     setShowDatePicker(true);
+        //     setIsSending(false); // show button as idle while user chooses time
+        //   },
+        // },
+      ],
+      {cancelable: true},
+    );
+  };
+
+  // Main send handler (keeps your original flow but integrates schedule)
   const handleSendMessages = async () => {
     if (isSending) return;
     setIsSending(true);
@@ -182,187 +602,211 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
 
     const selectedIds = contactsToSend.map(c => c.id);
 
-    const tryReserveAndSend = async () => {
-      try {
-        const messageId = await insertSentMessage(
-          [{message}],
-          new Date().toISOString(),
+    // Build personalized messages now so we store/launch same payload later
+    const personalizedMessages = contactsToSend
+      .map(contact => {
+        const messages = replaceContactPlaceholders(
+          templateList[contact.id] || message,
+          contact,
         );
+        if (!messages) return null;
 
-        function replaceContactPlaceholders(template, contact) {
-          const replacements = {
-            '{{name}}': contact.name || '',
-            '{{phone}}': contact.phone || '',
-          };
+        // FIX: Use bulk media.uri if available, else contact.mediaPath
+        const mediaPath = media ? media.uri : contact.mediaPath;
 
-          if (contact.extra_field) {
+        return {
+          phone: contact.phone,
+          message: messages,
+          name: contact.name,
+          mediaPath, // Now includes bulk media!
+        };
+      })
+      .filter(msg => msg !== null);
+
+    if (personalizedMessages.length === 0) {
+      Alert.alert('Error', 'No valid messages could be generated.');
+      setIsSending(false);
+      return;
+    }
+
+    // NEW: Validate media URI if media is present
+    if (
+      media &&
+      !media.uri.startsWith('file://') &&
+      !media.uri.startsWith('content://')
+    ) {
+      Alert.alert('Invalid Media URI', 'Please select a valid image.');
+      setIsSending(false); // Reset UI state
+      return;
+    }
+
+    // Ask user whether to Send Now or Schedule
+    Alert.alert(
+      'Send Type',
+      'Do you want to send messages now !',
+      [
+        {
+          text: 'Dont Send',
+          style: 'cancel',
+          onPress: () => setIsSending(false),
+        },
+        {
+          text: 'Send Now',
+          onPress: async () => {
+            // Send Now flow:
             try {
-              const extrafield = JSON.parse(contact.extra_field);
-              Object.keys(extrafield).forEach(key => {
-                replacements[`{{${key}}}`] = extrafield[key] || '';
+              // Permission checks
+              if (needsHelp) {
+                const enabled = await checkAccessibilityPermission();
+                if (!enabled) {
+                  Alert.alert(
+                    'Permission Required',
+                    'Accessibility is required for automated sending. Please enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openSettings},
+                    ],
+                  );
+                  return;
+                }
+              } else {
+                const overlayGranted = await checkOverlayPermission();
+                if (!overlayGranted) {
+                  Alert.alert(
+                    'Overlay Permission Required',
+                    'Overlay permission is required for manual sending. Enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openOverlaySettings},
+                    ],
+                  );
+                  return;
+                }
+              }
+
+              // Reserve / deduct points (immediately before actual send)
+              try {
+                const newBalance = await reservePointsForMessagesByIds(
+                  selectedIds,
+                );
+                if (newBalance?.new_balance !== undefined) {
+                  // some bridges return more complex object, but your JS wrapper returns a value
+                  // update points using whatever shape you get
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                  else if (newBalance.new_balance)
+                    setPoints(newBalance.new_balance);
+                } else {
+                  // if reserve returned a number
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                }
+              } catch (reserveErr) {
+                // handle insufficient points
+                if (reserveErr && reserveErr.code === 'INSUFFICIENT_POINTS') {
+                  setIsSending(false);
+                  return handleInsufficientPoints(reserveErr);
+                }
+                throw reserveErr;
+              }
+
+              // Insert into sentmessages log (immediate send) - store payload for reporting
+              try {
+                await insertSentMessage(
+                  [
+                    {
+                      isScheduled: false,
+                      scheduledTime: null,
+                      campaignId: campaign.id,
+                      personalizedMessages,
+                    },
+                  ],
+                  new Date().toISOString(),
+                );
+              } catch (e) {
+                console.warn(
+                  'Failed to insertSentMessage log for immediate send',
+                  e,
+                );
+              }
+
+              // Launch send (your existing function handles the details)
+              launchWhatsappMessage(personalizedMessages, whatsappPackage);
+              navigation.navigate('WhatsappResultScreen', {
+                totalContacts: personalizedMessages,
+                whatsappPackage,
               });
             } catch (e) {
-              console.warn('Failed to parse extra_field:', e);
+              console.error('Send Now error', e);
+              Alert.alert('Error', String(e.message || e));
+            } finally {
+              setIsSending(false);
             }
-          }
+          },
+        },
+        // {
+        //   text: 'Schedule',
+        //   onPress: async () => {
+        //     // Schedule flow:
+        //     // We'll keep UI open for user to pick a date/time
+        //     // Save the pending payload into a ref while user picks date
+        //     pendingScheduleRef.current = {personalizedMessages, selectedIds};
+        //     setShowDatePicker(true);
+        //     setIsSending(false); // show button as idle while user chooses time
+        //   },
+        // },
+      ],
+      {cancelable: true},
+    );
+  };
 
-          const delimiter = '$@#__DELIMITER__#@%';
-          const joinedString = template.join(delimiter);
-
-          if (joinedString.length > 1000) {
-            Alert.alert(
-              'Error',
-              'Text is too long. Please reduce the message size.',
-            );
-            setIsSending(false);
-            return null;
-          }
-
-          let replacedString = joinedString;
-          Object.keys(replacements).forEach(placeholder => {
-            replacedString = replacedString.replaceAll(
-              placeholder,
-              replacements[placeholder],
-            );
-          });
-
-          return replacedString.split(delimiter).map(segment => segment.trim());
-        }
-
-        const personalizedMessages = contactsToSend
-          .map(contact => {
-            const messages = replaceContactPlaceholders(
-              templateList[contact.id] || message,
-              contact,
-            );
-            if (!messages) return null;
-            return {
-              phone: contact.phone,
-              message: messages,
-              name: contact.name,
-              mediaPath: contact.mediaPath,
-            };
-          })
-          .filter(msg => msg !== null);
-
-        if (personalizedMessages.length === 0) {
-          Alert.alert('Error', 'No valid messages could be generated.');
-          setIsSending(false);
-          return;
-        }
-
-        const goToResultScreen = () => {
-          navigation.navigate('WhatsappResultScreen', {
-            totalContacts: personalizedMessages,
-            whatsappPackage,
-          });
-        };
-
-        if (needsHelp) {
-          const enabled = await checkAccessibilityPermission();
-          if (!enabled) {
-            Alert.alert(
-              'Permission Required',
-              'To use this assistive tool, Accessibility feature is required. Kindly enable in settings.',
-              [
-                {text: 'Cancel', style: 'cancel'},
-                {text: 'Go to Settings', onPress: openSettings},
-              ],
-              {cancelable: true},
-            );
-            setIsSending(false);
-            return;
-          }
-          const newBalance = await reservePointsForMessagesByIds(selectedIds);
-          setPoints(newBalance);
-          launchWhatsappMessage(personalizedMessages, whatsappPackage);
-          goToResultScreen();
-          setIsSending(false);
-        } else {
-          const overlayGranted = await checkOverlayPermission();
-          if (!overlayGranted) {
-            Alert.alert(
-              'Overlay Permission Required',
-              'This feature requires overlay permission to show the floating button and control message delivery. Enable it in settings.',
-              [
-                {text: 'Cancel', style: 'cancel'},
-                {text: 'Go to Settings', onPress: openOverlaySettings},
-              ],
-              {cancelable: true},
-            );
-            setIsSending(false);
-            return;
-          }
-
-          Alert.alert(
-            'Manual Mode',
-            'You will have to tap "Send" manually for each message. Tick the checkbox above to get help.',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => setIsSending(false),
-              },
-              {
-                text: 'Send Manually',
-                onPress: async () => {
-                  const newBalance = await reservePointsForMessagesByIds(
-                    selectedIds,
+  // Handle insufficient points flow (watch ad / earn)
+  const handleInsufficientPoints = async err => {
+    try {
+      Alert.alert(
+        'Not enough points',
+        `${
+          err.message || 'Insufficient points.'
+        }\nWatch a rewarded ad to earn points and continue?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {},
+          },
+          {
+            text: 'Watch Ad',
+            onPress: async () => {
+              try {
+                const reward = await showRewardedAd();
+                await fetchPoints();
+                Alert.alert(
+                  'Points earned!',
+                  `You earned ${reward.amount} points. New balance: ${reward.balance}.`,
+                );
+              } catch (adErr) {
+                if (adErr.code === 'REWARD_SAVE_ERR') {
+                  Alert.alert(
+                    'Error',
+                    'Failed to save points to database. Please try again.',
                   );
-                  setPoints(newBalance);
-                  launchWhatsappMessage(personalizedMessages, whatsappPackage);
-                  goToResultScreen();
-                  setIsSending(false);
-                },
-              },
-            ],
-          );
-        }
-      } catch (e) {
-        if (e.code === 'INSUFFICIENT_POINTS') {
-          Alert.alert(
-            'Not enough points',
-            `${e.message} Watch a rewarded ad to earn points and continue?`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => setIsSending(false),
-              },
-              {
-                text: 'Watch Ad',
-                onPress: async () => {
-                  try {
-                    const reward = await showRewardedAd();
-                    Alert.alert(
-                      'Points earned!',
-                      `You earned ${reward.amount} points. New balance: ${reward.balance}. Retrying...`,
-                    );
-                    await fetchPoints();
-                  } catch (adErr) {
-                    if (adErr.code === 'REWARD_SAVE_ERR') {
-                      Alert.alert(
-                        'Error',
-                        'Failed to save points to database. Please try again.',
-                      );
-                    } else {
-                      Alert.alert('Ad failed', String(adErr.message || adErr));
-                    }
-                    setIsSending(false);
-                  }
-                },
-              },
-            ],
-          );
-        } else {
-          console.error('Error in tryReserveAndSend:', e);
-          Alert.alert('Error', String(e.message || e));
-          setIsSending(false);
-        }
-      }
-    };
-
-    await tryReserveAndSend();
+                } else {
+                  Alert.alert('Ad failed', String(adErr.message || adErr));
+                }
+              }
+            },
+          },
+        ],
+      );
+    } catch (e) {
+      console.error('handleInsufficientPoints error', e);
+    }
   };
 
   const areAllSelected =
@@ -404,9 +848,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         <BannerAd
           unitId={AD_UNIT_TOP}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
+          requestOptions={{requestNonPersonalizedAdsOnly: true}}
           onAdLoaded={() => console.log('Top banner ad loaded')}
           onAdFailedToLoad={error =>
             console.log('Top banner ad failed to load: ', error)
@@ -592,6 +1034,26 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </Text>
       </View>
 
+      {/* Separate Date and Time Pickers */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={scheduledTime}
+          mode="date"
+          display="default"
+          minimumDate={new Date(Date.now() + 1000 * 30)}
+          onChange={onDatePicked}
+        />
+      )}
+
+      {showTimePicker && (
+        <DateTimePicker
+          value={scheduledTime}
+          mode="time"
+          display="default"
+          onChange={onTimePicked}
+        />
+      )}
+
       {/* Main Send Button */}
       <TouchableOpacity
         style={[styles.sendButton, {backgroundColor: theme.colors.primary}]}
@@ -611,9 +1073,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         <BannerAd
           unitId={AD_UNIT_BOTTOM}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
+          requestOptions={{requestNonPersonalizedAdsOnly: true}}
           onAdLoaded={() => console.log('Bottom banner ad loaded')}
           onAdFailedToLoad={error =>
             console.log('Bottom banner ad failed to load: ', error)
@@ -637,8 +1097,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   );
 };
 
-// ... styles remain the same
-
+// Styles remain the same (copied from your original)
 const styles = StyleSheet.create({
   container: {
     flex: 1,

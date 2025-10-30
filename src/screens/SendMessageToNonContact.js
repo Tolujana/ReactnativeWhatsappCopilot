@@ -9,6 +9,7 @@ import {
   Alert,
   FlatList,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import {
   Text,
@@ -21,8 +22,9 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {Linking} from 'react-native';
 import {COUNTRIES} from '../util/Constant';
+import Header from '../components/Header';
 
-const SendMessageToNonContact = () => {
+const SendMessageToNonContact = ({toggleTheme}) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [country, setCountry] = useState(COUNTRIES[0]);
   const [messageText, setMessageText] = useState('');
@@ -32,6 +34,7 @@ const SendMessageToNonContact = () => {
   const [telegramUsername, setTelegramUsername] = useState('');
 
   const theme = useTheme();
+  const styles = makeStyles(theme);
 
   const trimmedNumber = phoneNumber.trim().replace(/^0+/, '');
   const fullNumber = `${country.callingCode}${trimmedNumber}`;
@@ -82,75 +85,114 @@ const SendMessageToNonContact = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.select({ios: 'padding', android: undefined})}>
-      <View style={styles.card}>
-        <Text style={styles.label}>Country:</Text>
-        <TouchableOpacity
-          style={styles.countryPicker}
-          onPress={() => setCountryModalVisible(true)}>
-          <Text style={styles.countryText}>
-            {country.name} (+{country.callingCode})
-          </Text>
-          <Icon name="chevron-down" size={20} />
-        </TouchableOpacity>
+    <View
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      <Header toggleTheme={toggleTheme} showBackButton={true} />
 
-        <Text style={styles.label}>Phone number:</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. 9012345678"
-          keyboardType="phone-pad"
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-        />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.select({ios: 'padding', android: undefined})}
+        keyboardVerticalOffset={Platform.select({ios: 0, android: 0})}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.card}>
+            <Text style={styles.label}>Country:</Text>
+            <TouchableOpacity
+              style={styles.countryPicker}
+              onPress={() => setCountryModalVisible(true)}>
+              <Text style={styles.countryText}>
+                {country.name} (+{country.callingCode})
+              </Text>
+              <Icon
+                name="chevron-down"
+                size={20}
+                color={theme.colors.onSurface}
+              />
+            </TouchableOpacity>
 
-        <Text style={styles.label}>Message (optional):</Text>
-        <TextInput
-          style={[styles.input, {height: 80}]}
-          placeholder="Type your message"
-          multiline
-          value={messageText}
-          onChangeText={setMessageText}
-        />
+            <Text style={styles.label}>Phone number:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 9012345678"
+              placeholderTextColor={theme.colors.onSurfaceDisabled}
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+            />
 
-        <IconButton
-          icon={() => (
-            <Icon name="send" size={24} color={theme.colors.primary} />
-          )}
-          onPress={handleSend}
-          style={styles.sendButton}
-        />
-      </View>
+            <Text style={styles.label}>Message (optional):</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Type your message"
+              placeholderTextColor={theme.colors.onSurfaceDisabled}
+              multiline
+              value={messageText}
+              onChangeText={setMessageText}
+            />
+
+            <IconButton
+              icon="send"
+              iconColor={theme.colors.onPrimary}
+              containerColor={theme.colors.primary}
+              size={24}
+              onPress={handleSend}
+              style={styles.sendButton}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* App selection dialog */}
       <Portal>
-        <Dialog visible={visible} onDismiss={() => setVisible(false)}>
-          <Dialog.Title>Select App</Dialog.Title>
+        <Dialog
+          visible={visible}
+          onDismiss={() => {
+            setVisible(false);
+            setSelectedApp(null);
+          }}
+          style={{backgroundColor: theme.colors.surface}}>
+          <Dialog.Title style={{color: theme.colors.onSurface}}>
+            Select App
+          </Dialog.Title>
           <Dialog.Content>
-            <Button onPress={() => openApp('whatsapp')}>WhatsApp</Button>
-            <Button onPress={() => setSelectedApp('telegram')}>Telegram</Button>
+            <Button
+              mode="outlined"
+              onPress={() => openApp('whatsapp')}
+              style={styles.dialogButton}>
+              WhatsApp
+            </Button>
+            <Button
+              mode="outlined"
+              onPress={() => setSelectedApp('telegram')}
+              style={styles.dialogButton}>
+              Telegram
+            </Button>
 
             {selectedApp === 'telegram' && (
-              <>
+              <View style={styles.telegramSection}>
                 <TextInput
                   placeholder="Telegram username (without @)"
+                  placeholderTextColor={theme.colors.onSurfaceDisabled}
                   value={telegramUsername}
                   onChangeText={setTelegramUsername}
-                  style={{
-                    marginTop: 12,
-                    borderBottomWidth: 1,
-                    borderColor: '#ccc',
-                    paddingBottom: 4,
-                  }}
+                  style={[
+                    styles.telegramInput,
+                    {
+                      color: theme.colors.onSurface,
+                      borderColor: theme.colors.outline,
+                    },
+                  ]}
                 />
                 <Button
                   mode="contained"
                   onPress={() => openApp('telegram')}
-                  disabled={!telegramUsername.trim()}>
+                  disabled={!telegramUsername.trim()}
+                  style={styles.telegramButton}>
                   Continue to Telegram
                 </Button>
-              </>
+              </View>
             )}
           </Dialog.Content>
         </Dialog>
@@ -161,65 +203,138 @@ const SendMessageToNonContact = () => {
         <Dialog
           visible={countryModalVisible}
           onDismiss={() => setCountryModalVisible(false)}
-          style={{maxHeight: '80%'}}>
-          <Dialog.Title>Select Country</Dialog.Title>
-          <Dialog.ScrollArea style={{maxHeight: 300}}>
+          style={[
+            styles.countryDialog,
+            {backgroundColor: theme.colors.surface},
+          ]}>
+          <Dialog.Title style={{color: theme.colors.onSurface}}>
+            Select Country
+          </Dialog.Title>
+          <Dialog.ScrollArea style={styles.countryScrollArea}>
             <FlatList
               data={COUNTRIES}
               keyExtractor={item => item.code}
               renderItem={({item}) => (
                 <TouchableOpacity
-                  style={styles.countryItem}
+                  style={[
+                    styles.countryItem,
+                    {borderBottomColor: theme.colors.outline},
+                  ]}
                   onPress={() => {
                     setCountry(item);
                     setCountryModalVisible(false);
                   }}>
-                  <Text style={{flex: 1}}>{item.name}</Text>
-                  <Text>+{item.callingCode}</Text>
+                  <Text
+                    style={[
+                      styles.countryItemText,
+                      {color: theme.colors.onSurface},
+                    ]}>
+                    {item.name}
+                  </Text>
+                  <Text style={{color: theme.colors.onSurface}}>
+                    +{item.callingCode}
+                  </Text>
                 </TouchableOpacity>
               )}
             />
           </Dialog.ScrollArea>
         </Dialog>
       </Portal>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
-export default SendMessageToNonContact;
+const makeStyles = theme =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      paddingTop: 0, // Ensure no padding at top
+    },
+    keyboardAvoidingView: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: 20,
+    },
+    card: {
+      backgroundColor: theme.colors.surface,
+      padding: 24,
+      borderRadius: 16,
+      elevation: 3,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: {width: 0, height: 2},
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+    },
+    label: {
+      fontSize: 16,
+      marginTop: 12,
+      marginBottom: 4,
+      color: theme.colors.onSurface,
+    },
+    input: {
+      borderBottomWidth: 1,
+      borderColor: theme.colors.outline,
+      fontSize: 16,
+      paddingVertical: 6,
+      marginBottom: 10,
+      color: theme.colors.onSurface,
+    },
+    textArea: {
+      height: 80,
+      textAlignVertical: 'top',
+    },
+    countryPicker: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderColor: theme.colors.outline,
+      marginBottom: 10,
+    },
+    countryText: {
+      flex: 1,
+      fontSize: 16,
+      color: theme.colors.onSurface,
+    },
+    countryItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderBottomWidth: 0.5,
+    },
+    countryItemText: {
+      flex: 1,
+    },
+    sendButton: {
+      alignSelf: 'flex-end',
+      marginTop: 20,
+    },
+    dialogButton: {
+      marginVertical: 4,
+    },
+    telegramSection: {
+      marginTop: 12,
+    },
+    telegramInput: {
+      borderBottomWidth: 1,
+      paddingBottom: 8,
+      marginBottom: 12,
+      fontSize: 16,
+    },
+    telegramButton: {
+      marginTop: 8,
+    },
+    countryDialog: {
+      maxHeight: '80%',
+    },
+    countryScrollArea: {
+      maxHeight: 300,
+      paddingHorizontal: 0,
+    },
+  });
 
-const styles = StyleSheet.create({
-  container: {flex: 1, justifyContent: 'center', padding: 20},
-  card: {
-    backgroundColor: '#f9f9f9',
-    padding: 24,
-    borderRadius: 16,
-    elevation: 3,
-  },
-  label: {fontSize: 16, marginTop: 12, marginBottom: 4},
-  input: {
-    borderBottomWidth: 1,
-    borderColor: '#ccc',
-    fontSize: 16,
-    paddingVertical: 6,
-    marginBottom: 10,
-  },
-  countryPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderColor: '#ccc',
-    marginBottom: 10,
-  },
-  countryText: {flex: 1, fontSize: 16},
-  countryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 0.5,
-    borderColor: '#eee',
-  },
-  sendButton: {alignSelf: 'flex-end', marginTop: 20},
-});
+export default SendMessageToNonContact;

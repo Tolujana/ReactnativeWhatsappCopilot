@@ -382,7 +382,7 @@ class MessengerMediaActivity : AppCompatActivity() {
                     AdView(parent.context).apply {
                         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                         setAdSize(AdSize.BANNER)
-                        adUnitId = "ca-app-pub-3940256099942544/6300978111"
+                        adUnitId = "ca-app-pub-7993847549836206/9152830275"
                         loadAd(AdRequest.Builder().build())
                     }
                 )

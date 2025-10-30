@@ -10,9 +10,13 @@ import {
 import {pick} from '@react-native-documents/picker';
 import {FAB, Portal, Provider, Button, useTheme} from 'react-native-paper';
 import {
+  checkDuplicatesAndReserveForImport,
+  deductPointsForImport,
   deleteContacts,
   getContactsByCampaignId,
   insertContact,
+  insertContactNoDeduction,
+  showRewardedAd,
   updateContact,
 } from '../../util/data';
 import ContactModal from '../../components/ContactModal';
@@ -112,6 +116,14 @@ export default function ContactSelectionScreen({
     }
 
     try {
+      const hasPermission = await requestContactsPermission();
+      if (!hasPermission) {
+        Alert.alert(
+          'Permission Denied',
+          'Contacts permission is required to save contacts.',
+        );
+        return;
+      }
       if (isEditMode && editingContactId) {
         const originalPhone = initialModalData.phone;
         const isPhoneChanged = originalPhone !== phone;
@@ -141,7 +153,33 @@ export default function ContactSelectionScreen({
       setModalVisible(false);
       fetchContacts();
     } catch (err) {
-      Alert.alert('Error', 'Something went wrong while saving the contact.');
+      console.error(err);
+      if (String(err.code || err.message).includes('INSUFFICIENT_POINTS')) {
+        Alert.alert(
+          'Not enough points',
+          'Watch a rewarded ad to earn points and continue?',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {
+              text: 'Watch Ad',
+              onPress: async () => {
+                try {
+                  const reward = await showRewardedAd();
+                  Alert.alert(
+                    'Points earned!',
+                    `You earned ${reward.amount || reward} points. Retrying...`,
+                  );
+                  await tryInsert();
+                } catch (adErr) {
+                  Alert.alert('Ad failed', String(adErr?.message || adErr));
+                }
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert('Error', 'Something went wrong while saving the contact.');
+      }
     }
   };
 
@@ -182,7 +220,7 @@ export default function ContactSelectionScreen({
     }
   };
 
-  const handleImportFromCSV = async () => {
+  const handleImportFromCSV1 = async () => {
     try {
       const [res] = await pick({
         type: [
@@ -281,6 +319,234 @@ export default function ContactSelectionScreen({
     }
   };
 
+  const handleImportFromCSV = async () => {
+    // Hoist sanitizePhone for full scope
+    const sanitizePhone = raw => {
+      const cleaned = raw.trim().replace(/[^\d+]/g, '');
+      return raw.trim().startsWith('+')
+        ? '+' + cleaned.replace(/\+/g, '')
+        : cleaned.replace(/\+/g, '');
+    };
+
+    try {
+      const [res] = await pick({
+        type: [
+          'text/csv',
+          'application/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          '*/*',
+        ],
+      });
+
+      const fileExtension = res.name.split('.').pop().toLowerCase();
+      if (fileExtension !== 'csv') {
+        Alert.alert('Invalid File', 'Please select a valid .csv file.');
+        return;
+      }
+
+      const content = await RNFS.readFile(res.uri, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+
+      if (lines.length < 2) {
+        Alert.alert(
+          'CSV Error',
+          'The CSV file must contain headers and at least one data row.',
+        );
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+      // Pre-parse to extract and sanitize phones (for duplicate check & count)
+      const potentialPhones = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          const record = Object.fromEntries(
+            headers.map((key, idx) => [key, parts[idx] || '']),
+          );
+          const rawPhone = record.phone || record.number || '';
+          if (rawPhone.trim()) {
+            const phone = sanitizePhone(rawPhone);
+            if (phone) potentialPhones.push(phone); // Only add valid phones
+          }
+        }
+      }
+
+      if (potentialPhones.length === 0) {
+        Alert.alert('CSV Error', 'No valid phone numbers found in the CSV.');
+        return;
+      }
+
+      // NEW: Define performImport FIRST (before reserve, for closure access)
+      const performImport = async reserveResult => {
+        console.log('performImport starting...'); // Debug log
+        const duplicatePhones = [];
+        let successCount = 0;
+        const insertions = lines.slice(1).map(async (line, index) => {
+          const parts = line.split(',').map(p => p.trim());
+
+          if (parts.length >= 2) {
+            const record = Object.fromEntries(
+              headers.map((key, i) => [key, parts[i] || '']),
+            );
+
+            const name = record.name || '';
+            const rawPhone = record.phone || record.number || '';
+
+            if (!rawPhone.trim()) {
+              return; // Skip invalid
+            }
+
+            const phone = sanitizePhone(rawPhone);
+
+            const extraFields = {};
+            for (const [key, value] of Object.entries(record)) {
+              if (!['name', 'phone', 'number'].includes(key)) {
+                extraFields[key] = value;
+              }
+            }
+
+            try {
+              const result = await insertContactNoDeduction(
+                campaign.id,
+                name,
+                phone,
+                extraFields,
+              );
+
+              if (result.status === 'duplicate') {
+                duplicatePhones.push(phone);
+              } else {
+                successCount++;
+                console.log(`Row ${index} inserted successfully: ${phone}`); // Per-row log
+              }
+            } catch (insertErr) {
+              console.error(`Insert failed for row ${index}:`, insertErr);
+              // Continue with others; don't fail whole batch
+            }
+          }
+        });
+
+        await Promise.all(insertions);
+        fetchContacts(); // Refresh UI
+
+        console.log(
+          'performImport ending: successCount=',
+          successCount,
+          'duplicates=',
+          duplicatePhones.length,
+        ); // Debug log
+
+        // Check if import mostly succeeded (e.g., at least 1 new)
+        const importedCount = reserveResult.newCount - duplicatePhones.length;
+        if (importedCount > 0) {
+          Alert.alert(
+            'Import Partial Success',
+            `Imported ${importedCount} new contacts (some skips/errors).`,
+          );
+          return true; // Proceed to deduct
+        } else {
+          Alert.alert('Import Failed', 'Some contact(s) were not imported.');
+          return true; // No deduct
+        }
+      };
+
+      // Pre-calculate: Check duplicates & RESERVE (dry-run, no deduct yet)
+      try {
+        console.log('Starting reserve check...'); // Debug log
+        // FIXED: Pass deduct: false for dry-run check only
+        const reserveResult = await checkDuplicatesAndReserveForImport(
+          potentialPhones,
+          campaign.id,
+          false, // Dry-run (no deduct; native supports default true)
+        );
+        console.log('Reserve check result:', reserveResult); // Debug log
+
+        // FIXED: Define proceedWithImport BEFORE Alert (full func, passes performImport)
+        const proceedWithImport = async () => {
+          console.log('Continue tapped - starting import'); // Debug log (confirms tap works)
+          const importSuccess = await performImport(reserveResult); // Pass result
+          if (importSuccess) {
+            // Deduct ONLY after successful import
+            try {
+              console.log('Import success - deducting points...'); // Debug log
+              await deductPointsForImport(reserveResult.cost); // Separate deduct call
+              console.log('Deduct complete'); // Debug log
+              Alert.alert(
+                'Success',
+                `Imported ${reserveResult.newCount} new contacts. Points deducted.`,
+              );
+            } catch (deductErr) {
+              console.error('Deduct failed post-import:', deductErr);
+              Alert.alert('Import OK', 'Contacts saved.');
+            }
+          }
+        };
+
+        Alert.alert(
+          'Notice',
+          `Ready to import ${reserveResult.newCount} new contacts (skipping ${
+            reserveResult.duplicates
+          } duplicates). Estimated cost: ${
+            reserveResult.cost
+          } points. Current balance: ${
+            reserveResult.currentBalance || reserveResult.newBalance
+          }.`,
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Continue', onPress: proceedWithImport}, // Now fully defined
+          ],
+        );
+      } catch (reserveErr) {
+        console.error('Reserve check failed:', reserveErr);
+        if (reserveErr.code === 'INSUFFICIENT_POINTS') {
+          Alert.alert(
+            'Not Enough Points',
+            `${reserveErr.message}\nWatch a rewarded ad to earn points?`,
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {
+                text: 'Watch Ad',
+                onPress: async () => {
+                  try {
+                    const reward = await showRewardedAd();
+                    await fetchPoints(); // Refresh points (ensure defined)
+                    Alert.alert(
+                      'Points Earned!',
+                      `+${reward.amount} points. New balance: ${reward.balance}. Try importing again.`,
+                    );
+                  } catch (adErr) {
+                    Alert.alert(
+                      'Ad Failed',
+                      adErr.message || 'Could not earn points.',
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        } else {
+          Alert.alert(
+            'Reserve Error',
+            reserveErr.message || 'Failed to check points.',
+          );
+        }
+        return; // Stop import
+      }
+    } catch (err) {
+      console.error('Overall import error:', err);
+      if (err.code !== 'DOCUMENT_PICKER_CANCELED') {
+        Alert.alert(
+          'Import Error',
+          err.message || 'An error occurred while importing the CSV file.',
+        );
+      }
+    }
+  };
+
   const styles = StyleSheet.create({
     fab: {
       position: 'absolute',
@@ -332,7 +598,7 @@ export default function ContactSelectionScreen({
         />
         {/* <View style={styles.bannerContainer}>
           <BannerAd
-            unitId="ca-app-pub-3940256099942544/6300978111"
+            unitId="ca-app-pub-7993847549836206/9152830275"
             size={BannerAdSize.BANNER}
           />
         </View> */}

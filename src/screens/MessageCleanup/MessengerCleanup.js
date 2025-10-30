@@ -6,8 +6,8 @@ import {
   View,
   Alert,
 } from 'react-native';
-import {Text, Surface, useTheme, Button} from 'react-native-paper';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {Text, Surface, useTheme, Button, Card} from 'react-native-paper';
+import Icon from 'react-native-vector-icons/FontAwesome5';
 import {useNavigation} from '@react-navigation/native';
 import {NativeModules} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,6 +36,7 @@ export default function MessengerCleanup() {
   const theme = useTheme();
   const navigation = useNavigation();
   const [treeUri, setTreeUri] = useState(null);
+  const styles = makeStyles(theme);
 
   // Save treeUri to AsyncStorage
   const saveTreeUriToStorage = async uri => {
@@ -148,73 +149,111 @@ export default function MessengerCleanup() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.noticeBox}>
-        <Text variant="bodyMedium" style={{textAlign: 'center'}}>
-          {treeUri
-            ? isAndroidMediaFolder(treeUri)
-              ? "You've selected the correct Android/media folder."
-              : 'Selected folder is not Android/media. Please select the correct folder.'
-            : 'Please select the Android/media folder to access messenger media.'}
-        </Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Card style={styles.noticeCard}>
+          <Card.Content>
+            <Text variant="bodyMedium" style={styles.noticeText}>
+              {treeUri
+                ? isAndroidMediaFolder(treeUri)
+                  ? "You've selected the correct Android/media folder."
+                  : 'Selected folder is not Android/media. Please select the correct folder.'
+                : 'Please select the Android/media folder to access messenger media.'}
+            </Text>
+          </Card.Content>
+          <Card.Actions style={styles.cardActions}>
+            <Button
+              mode="contained"
+              onPress={pickFolder}
+              style={styles.folderButton}>
+              {treeUri ? 'Change Folder' : 'Pick Folder'}
+            </Button>
+            {treeUri && (
+              <Button
+                mode="outlined"
+                onPress={clearSavedTreeUri}
+                style={styles.clearButton}>
+                Clear Saved Folder
+              </Button>
+            )}
+          </Card.Actions>
+        </Card>
 
-        <Button mode="contained" onPress={pickFolder} style={{marginTop: 8}}>
-          {treeUri ? 'Change Folder' : 'Pick Folder'}
-        </Button>
-
-        {treeUri && (
-          <Button
-            mode="outlined"
-            onPress={clearSavedTreeUri}
-            style={{marginTop: 8}}>
-            Clear Saved Folder
-          </Button>
-        )}
-      </View>
-
-      {MESSENGERS.map(({app, icon}) => (
-        <TouchableOpacity key={app} onPress={() => handlePress(app)}>
-          <Surface
-            style={[
-              styles.card,
-              {backgroundColor: theme.colors.elevation.level1},
-            ]}>
-            <Icon name={icon} size={30} color={theme.colors.primary} />
-            <Text style={styles.appName}>{app}</Text>
-          </Surface>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
+        <View style={styles.appsContainer}>
+          {MESSENGERS.map(({app, icon}) => (
+            <TouchableOpacity
+              key={app}
+              onPress={() => handlePress(app)}
+              style={styles.appTouchable}>
+              <Card style={styles.appCard}>
+                <Card.Content style={styles.appCardContent}>
+                  <Icon name={icon} size={32} color={theme.colors.primary} />
+                  <Text variant="bodyMedium" style={styles.appName}>
+                    {app}
+                  </Text>
+                </Card.Content>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'center',
-  },
-  card: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-  },
-  appName: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  noticeBox: {
-    width: '100%',
-    padding: 16,
-    backgroundColor: '#FFE0B2',
-    marginBottom: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-});
+const makeStyles = theme =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 20,
+    },
+    noticeCard: {
+      marginBottom: 24,
+      backgroundColor: theme.colors.surfaceVariant,
+    },
+    noticeText: {
+      textAlign: 'center',
+      color: theme.colors.onSurfaceVariant,
+    },
+    cardActions: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 8,
+    },
+    folderButton: {
+      borderRadius: 8,
+    },
+    clearButton: {
+      borderRadius: 8,
+      borderColor: theme.colors.outline,
+    },
+    appsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 16,
+      justifyContent: 'center',
+    },
+    appTouchable: {
+      width: '30%',
+      minWidth: 100,
+    },
+    appCard: {
+      backgroundColor: theme.colors.surface,
+      elevation: 2,
+    },
+    appCardContent: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16,
+    },
+    appName: {
+      marginTop: 8,
+      textAlign: 'center',
+      color: theme.colors.onSurface,
+      fontWeight: '500',
+    },
+  });

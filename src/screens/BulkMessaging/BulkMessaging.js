@@ -114,7 +114,7 @@ const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
       <Header toggleTheme={toggleTheme} showBackButton={true} />
       <View style={styles.bannerContainer}>
         <BannerAd
-          unitId="ca-app-pub-3940256099942544/6300978111"
+          unitId="ca-app-pub-7993847549836206/9152830275"
           size={BannerAdSize.BANNER}
         />
       </View>
@@ -212,16 +212,16 @@ const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
       </View>
       <View style={styles.bannerContainer}>
         <BannerAd
-          unitId="ca-app-pub-3940256099942544/6300978111"
+          unitId="ca-app-pub-7993847549836206/9152830275"
           size={BannerAdSize.BANNER}
         />
       </View>
-      <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
+      {/* <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
         <Icon name="attachment" size={22} color={theme.colors.primary} />
         <Text style={{marginLeft: 6, color: theme.colors.primary}}>
           Attach Media
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {media && (
         <View style={styles.preview}>

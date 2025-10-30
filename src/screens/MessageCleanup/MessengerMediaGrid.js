@@ -263,7 +263,7 @@ const MessengerMediaGrid = ({route, toggleTheme}) => {
       return (
         <View style={styles.adContainer}>
           <BannerAd
-            unitId="ca-app-pub-3940256099942544/6300978111"
+            unitId="ca-app-pub-7993847549836206/9152830275"
             size={BannerAdSize.BANNER}
             requestOptions={{requestNonPersonalizedAdsOnly: true}}
           />

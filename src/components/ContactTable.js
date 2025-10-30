@@ -57,7 +57,7 @@ export default function ContactTable({
   const isAnySelected = Object.values(selectedContacts).some(v => v);
   const hasInvalidNumbers = invalidIds.length > 0;
 
-  const handleDelete = () => {
+  const handleDelete1 = () => {
     const idsToDelete = Object.entries(selectedContacts)
       .filter(([_, selected]) => selected)
       .map(([id]) => id);
@@ -71,6 +71,43 @@ export default function ContactTable({
         style: 'destructive',
         onPress: () => {
           deleteContacts(idsToDelete, fetchContacts);
+        },
+      },
+    ]);
+  };
+
+  const handleDelete = async () => {
+    const idsToDelete = Object.entries(selectedContacts)
+      .filter(([_, selected]) => selected)
+      .map(([id]) => parseInt(id, 10)); // FIX: Parse strings to ints (base 10)
+
+    // Filter out invalid IDs (e.g., NaN from bad data)
+    const validIds = idsToDelete.filter(id => !isNaN(id) && id > 0);
+    if (validIds.length === 0) {
+      console.warn('No valid IDs to delete'); // Log for debug
+      return;
+    }
+
+    Alert.alert('Delete', `Delete ${validIds.length} contact(s)?`, [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            console.log('Deleting IDs:', validIds); // Log for debug
+            await deleteContacts(validIds); // Assume it returns promise; remove 2nd arg if not needed
+            console.log('Delete successful'); // Log for debug
+            fetchContacts(); // Refresh only on success
+            Alert.alert('Success', `${validIds.length} contact(s) deleted.`);
+          } catch (error) {
+            console.error('Delete failed:', error); // Log for debug
+            Alert.alert(
+              'Delete Failed',
+              error.message ||
+                'An error occurred while deleting contacts. Please try again.',
+            );
+          }
         },
       },
     ]);
@@ -239,6 +276,12 @@ export default function ContactTable({
         </View>
       ) : (
         <>
+          <View style={styles.bannerContainer}>
+            <BannerAd
+              unitId="ca-app-pub-7993847549836206/9152830275"
+              size={BannerAdSize.BANNER}
+            />
+          </View>
           {hasInvalidNumbers && (
             <Text style={styles.warningText}>
               ⚠️ Warning: Some numbers are missing country codes – invalid
@@ -373,13 +416,19 @@ export default function ContactTable({
               })}
             </DataTable>
           </ScrollView>
-          <View style={styles.bannerContainer}>
-            <BannerAd
-              unitId="ca-app-pub-3940256099942544/6300978111"
-              size={BannerAdSize.BANNER}
-            />
-          </View>
         </>
+      )}
+      {isAnySelected && (
+        <FAB
+          icon="delete"
+          style={{
+            position: 'absolute',
+            left: 16,
+            bottom: 16,
+            backgroundColor: 'red',
+          }}
+          onPress={handleDelete}
+        />
       )}
     </View>
   );

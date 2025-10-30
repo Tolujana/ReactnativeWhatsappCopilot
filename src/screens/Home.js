@@ -9,7 +9,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, {FadeInDown} from 'react-native-reanimated';
 import {useNavigation} from '@react-navigation/native';
-import {getAuth, signOut} from '@react-native-firebase/auth';
+
 import {BannerAd, BannerAdSize} from 'react-native-google-mobile-ads';
 import Header from '../components/Header';
 
@@ -31,20 +31,34 @@ const MENU_ITEMS = {
       screen: 'Campaign Selection',
     },
     {title: 'Message history', icon: 'history', screen: 'MessageReport'},
+    // {
+    //   title: 'Scheduled Messages',
+    //   icon: 'calendar',
+    //   screen: 'ScheduledMessages',
+    // },
     {title: 'Settings', icon: 'cog', screen: 'SettingsScreen'},
   ],
-  'Status Saver': [
+  'Media Management': [
     {title: 'Save status', icon: 'download', screen: 'StatusSaver'},
-    {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaver Settings'},
+    {title: 'Media save/Delete', icon: 'folder', screen: 'Messenger Cleanup'},
+    // {title: 'Settings', icon: 'cog-outline', screen: 'StatusSaver Settings'},
   ],
-  'Messenger Cleanup': [
-    {title: 'Clean up', icon: 'bin', screen: 'Messenger Cleanup'},
+  'Backup/Retrieve': [
+    {title: 'Chat messages', icon: 'folder', screen: 'BackupSendersScreen'},
     {
       title: 'Settings',
       icon: 'cog-outline',
-      screen: 'MessangerCleanup Settings',
+      screen: 'BackupSettingsScreen',
     },
   ],
+  // 'Messenger Cleanup': [
+  //   // {title: 'Clean up', icon: 'bin', screen: 'Messenger Cleanup'},
+  //   {
+  //     title: 'Settings',
+  //     icon: 'cog-outline',
+  //     screen: 'MessangerCleanup Settings',
+  //   },
+  // ],
 };
 
 export const signOutAnonymous = async () => {
@@ -107,18 +121,12 @@ export default function Home({toggleTheme}) {
     <ScrollView
       style={[styles.container, {backgroundColor: theme.colors.background}]}>
       <Header toggleTheme={toggleTheme} showBackButton={false} />
-      <PaperButton
-        onPress={signOutAnonymous}
-        mode="contained"
-        style={styles.signOutButton}>
-        Sign Out
-      </PaperButton>
 
       {Object.entries(MENU_ITEMS).map(([category, items], index) => (
         <View key={index}>
           <View style={styles.bannerContainer}>
             <BannerAd
-              unitId="ca-app-pub-3940256099942544/6300978111"
+              unitId="ca-app-pub-7993847549836206/9152830275"
               size={BannerAdSize.BANNER}
             />
           </View>

@@ -2,6 +2,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.copilot3">
 
+    <!-- <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" /> -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -22,7 +23,7 @@
         <!-- 👇 Override library’s placeholder AdMob ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"
+            android:value="ca-app-pub-7993847549836206~9806109696"
             tools:replace="android:value" />
 
         <activity android:name=".CustomContactPickerActivity" />
@@ -58,11 +59,19 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        <service android:name=".util.MessageBackupService"
+        android:exported="false"
+         android:label="Message Backup Service"         
+         android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+     <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+    </intent-filter> </service>
 
         <service android:name=".ManualWhatsAppSendService"
             android:exported="false" />
 
         <service android:name=".OverlayService" android:exported="false" />
+        <receiver android:name=".util.LowPointsReceiver" android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

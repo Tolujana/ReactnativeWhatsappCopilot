@@ -1,3 +1,4 @@
+// CampaignsDbHelper.kt remains unchanged
 package com.copilot3.util
 
 import android.content.Context
@@ -6,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
 class CampaignsDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "campaigns.db", null, 1) {
+    SQLiteOpenHelper(context, "campaigns.db", null, 3) {  // Bump version to 3
 
     companion object {
         private const val TAG = "CampaignsDbHelper"
@@ -50,6 +51,45 @@ class CampaignsDbHelper(context: Context) :
                 )
             """.trimIndent())
 
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS enabled_backups (
+                  app TEXT,
+                  contact_identifier TEXT,
+                  PRIMARY KEY (app, contact_identifier)
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS chats (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  app TEXT,
+                  contact_identifier TEXT,
+                  name TEXT,
+                  UNIQUE (app, contact_identifier)
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS messages (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  chat_id INTEGER,
+                  timestamp TEXT,
+                  is_sent INTEGER,
+                  content TEXT,
+                  FOREIGN KEY (chat_id) REFERENCES chats(id)
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS recent_chats (
+                  app TEXT,
+                  contact_identifier TEXT,
+                  name TEXT,
+                  last_timestamp TEXT,
+                  PRIMARY KEY (app, contact_identifier)
+                )
+            """.trimIndent())
+
             db.execSQL("INSERT OR IGNORE INTO user_points (id, points) VALUES (1, 0)")
             Log.d(TAG, "Database created successfully")
         } catch (e: Exception) {
@@ -61,11 +101,48 @@ class CampaignsDbHelper(context: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         try {
             Log.d(TAG, "Upgrading database from $oldVersion to $newVersion")
-            db.execSQL("DROP TABLE IF EXISTS campaigns")
-            db.execSQL("DROP TABLE IF EXISTS contacts")
-            db.execSQL("DROP TABLE IF EXISTS sentmessages")
-            db.execSQL("DROP TABLE IF EXISTS user_points")
-            onCreate(db)
+            if (oldVersion < 2) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS enabled_backups (
+                      app TEXT,
+                      contact_identifier TEXT,
+                      PRIMARY KEY (app, contact_identifier)
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chats (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      app TEXT,
+                      contact_identifier TEXT,
+                      name TEXT,
+                      UNIQUE (app, contact_identifier)
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS messages (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      chat_id INTEGER,
+                      timestamp TEXT,
+                      is_sent INTEGER,
+                      content TEXT,
+                      FOREIGN KEY (chat_id) REFERENCES chats(id)
+                    )
+                """.trimIndent())
+            }
+            if (oldVersion < 3) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS recent_chats (
+                      app TEXT,
+                      contact_identifier TEXT,
+                      name TEXT,
+                      last_timestamp TEXT,
+                      PRIMARY KEY (app, contact_identifier)
+                    )
+                """.trimIndent())
+            }
+            // For future upgrades, add more conditions
         } catch (e: Exception) {
             Log.e(TAG, "Error upgrading database: ${e.message}", e)
             throw e

@@ -20,13 +20,19 @@ import StatusSaverSettings from './screens/StatusSaver/StatusSaverSettings';
 import MessageReportScreen from './screens/BulkMessaging/MessageReportScreen';
 import MessengerCleanup from './screens/MessageCleanup/MessengerCleanup';
 import MessengerMediaGrid from './screens/MessageCleanup/MessengerMediaGrid';
+import ScheduledMessagesScreen from './screens/BulkMessaging/ScheduleMessageScreen';
+import SenderMessagesScreen from './screens/Backup/SenderMessagesScreen';
+import BackupSettingsScreen from './screens/Backup/BackupSettingsScreen';
+import BackupSendersScreen from './screens/Backup/BackupSendersScreen';
+import RecentChatsSelectionScreen from './screens/Backup/RecentSelectionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // Tab Navigator (bottom tabs)
 const TabNavigator = ({toggleTheme}) => (
-  <Tab.Navigator screenOptions={{headerShown: false}}>
+  <Tab.Navigator
+    screenOptions={{headerShown: false, tabBarStyle: {display: 'none'}}}>
     <Tab.Screen name="Home">
       {props => <Home {...props} toggleTheme={toggleTheme} />}
     </Tab.Screen>
@@ -57,6 +63,12 @@ const AppNavigator = ({toggleTheme}) => {
         <Stack.Screen name="SendMessageToNonContact">
           {props => (
             <SendMessageToNonContact {...props} toggleTheme={toggleTheme} />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen name="RecentChatsSelection">
+          {props => (
+            <RecentChatsSelectionScreen {...props} toggleTheme={toggleTheme} />
           )}
         </Stack.Screen>
 
@@ -97,10 +109,30 @@ const AppNavigator = ({toggleTheme}) => {
             <StatusSaverSettings {...props} toggleTheme={toggleTheme} />
           )}
         </Stack.Screen>
+        <Stack.Screen name="ScheduledMessages">
+          {props => (
+            <ScheduledMessagesScreen {...props} toggleTheme={toggleTheme} />
+          )}
+        </Stack.Screen>
 
         <Stack.Screen name="Contact Selection">
           {props => (
             <ContactFilterScreen {...props} toggleTheme={toggleTheme} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="BackupSendersScreen">
+          {props => (
+            <BackupSendersScreen {...props} toggleTheme={toggleTheme} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="SenderMessages">
+          {props => (
+            <SenderMessagesScreen {...props} toggleTheme={toggleTheme} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="BackupSettingsScreen">
+          {props => (
+            <BackupSettingsScreen {...props} toggleTheme={toggleTheme} />
           )}
         </Stack.Screen>
 
