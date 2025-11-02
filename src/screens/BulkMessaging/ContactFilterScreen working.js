@@ -1,5 +1,5 @@
 /* ContactFilterScreen.js
-   Updated: Complete media handling fixes
+   Updated: Notifee scheduling + background auto-send fallback
 */
 
 import React, {useCallback, useEffect, useState, useRef} from 'react';
@@ -53,7 +53,7 @@ const SETTINGS_KEYS = {
 
 const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   const theme = useTheme();
-  const {campaign, message, media} = route.params; // Get media from route params
+  const {campaign, message, media} = route.params;
   const [isSending, setIsSending] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState({});
@@ -67,34 +67,23 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   const [loading, setLoading] = useState(true);
   const [points, setPoints] = useState(0);
 
-  // Scheduling UI state
+  // Scheduling UI state - Separate date and time pickers
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempDate, setTempDate] = useState(null);
   const [scheduledTime, setScheduledTime] = useState(() => {
     const defaultTime = new Date();
     defaultTime.setHours(10, 0, 0, 0);
+    defaultTime.setDate(defaultTime.getDate()); // today
     return defaultTime;
   });
-  const pendingScheduleRef = useRef(null);
+  const pendingScheduleRef = useRef(null); // store pending payload while user picks date
 
+  // Your actual ad unit IDs (replace with your own)
   const AD_UNIT_TOP = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
   const AD_UNIT_BOTTOM = __DEV__ ? TestIds.BANNER : TestIds.BANNER;
 
-  // NEW: Log media info on component mount for debugging
-  useEffect(() => {
-    if (media) {
-      console.log('ContactFilterScreen received media:', {
-        uri: media.uri,
-        type: media.type,
-        fileName: media.fileName,
-        fileSize: media.fileSize,
-      });
-    } else {
-      console.log('ContactFilterScreen: No media attached');
-    }
-  }, [media]);
-
+  // Load settings from AsyncStorage
   const loadSettings = async () => {
     try {
       const [savedPackage, savedNeedsHelp] = await Promise.all([
@@ -166,6 +155,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
       fetchPoints();
       preloadRewardedAd();
       loadSettings();
+      // ensure notifee channel exists
       (async () => {
         try {
           await notifee.createChannel({
@@ -200,18 +190,22 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     fetchContacts();
   }, [campaign.id]);
 
+  // Listen for foreground notification press events to handle fallback
   useEffect(() => {
     const unsubscribe = notifee.onForegroundEvent(({type, detail}) => {
+      // EventType.PRESS is numeric in older versions; use EventType.PRESS from notifee if needed
       if (
         type === EventType.PRESS &&
         detail.notification?.data?.scheduledJobId
       ) {
+        // If notification contains scheduled job id, attempt to send now (fallback)
         handleNotificationSendFallback(detail.notification.data);
       }
     });
     return () => unsubscribe();
   }, []);
 
+  // Helper: when user taps notification fallback, send messages now (in foreground)
   const handleNotificationSendFallback = async data => {
     try {
       const parsed =
@@ -224,6 +218,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
       }
 
       const personalizedMessages = parsed.personalizedMessages;
+      // try to send — this will use your existing logic (Accessibility / overlay checked inside launchWhatsappMessage)
       launchWhatsappMessage(personalizedMessages, whatsappPackage);
     } catch (e) {
       console.error('Fallback send failed', e);
@@ -248,6 +243,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   }, []);
 
+  // Utility to replace placeholders
   function replaceContactPlaceholders(template, contact) {
     const replacements = {
       '{{name}}': contact.name || '',
@@ -284,26 +280,33 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     return replacedString.split(delimiter).map(segment => segment.trim());
   }
 
+  // Schedule notification (Notifee) and save scheduled job to DB via insertSentMessage
   const scheduleNotificationAndSave = async (
     personalizedMessages,
     selectedIds,
     whenDate,
   ) => {
+    // prepare payload
     const scheduledPayload = {
       isScheduled: true,
       scheduledTime: whenDate.toISOString(),
       campaignId: campaign.id,
-      personalizedMessages,
+      personalizedMessages, // array of {phone, message[], name, mediaPath}
       selectedIds,
     };
 
     try {
+      // 1) create database record (store payload as data)
+
       const rowId = await insertSentMessage(
         [{...scheduledPayload, sent: false}],
         new Date().toISOString(),
       );
+      // The insertSentMessage currently returns id of row
+      // We attach that id to the notification data for reference
       const notificationId = `scheduled-${rowId || Date.now()}`;
 
+      // 2) schedule notifee trigger
       const trigger = {
         type: TriggerType.TIMESTAMP,
         timestamp: whenDate.getTime(),
@@ -319,8 +322,10 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
           android: {
             channelId: 'scheduled-messages',
             pressAction: {id: 'default'},
+            // allow while idle for Doze (best-effort)
             allowWhileIdle: true,
           },
+          // embed job data (stringify to be safe)
           data: {
             scheduledJobId: String(rowId || notificationId),
             payload: JSON.stringify(scheduledPayload),
@@ -336,6 +341,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   };
 
+  // Complete scheduling with both date and time
   const completeScheduling = async (date, time) => {
     const pending = pendingScheduleRef.current;
     if (!pending) {
@@ -371,6 +377,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     } catch (e) {
       console.error('Schedule error', e);
 
+      // handle insufficient points
       if (e.code === 'INSUFFICIENT_POINTS') {
         setIsSending(false);
         return handleInsufficientPoints(e);
@@ -386,6 +393,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     }
   };
 
+  // Date picked handler
   const onDatePicked = (event, date) => {
     setShowDatePicker(false);
 
@@ -398,6 +406,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     setShowTimePicker(true);
   };
 
+  // Time picked handler
   const onTimePicked = (event, time) => {
     setShowTimePicker(false);
 
@@ -410,8 +419,8 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
     completeScheduling(tempDate, time);
   };
 
-  // IMPROVED: Complete media handling in main send handler
-  const handleSendMessages = async () => {
+  // Main send handler (keeps your original flow but integrates schedule)
+  const handleSendMessages1 = async () => {
     if (isSending) return;
     setIsSending(true);
 
@@ -427,7 +436,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
 
     const selectedIds = contactsToSend.map(c => c.id);
 
-    // IMPROVED: Build personalized messages with proper media handling
+    // Build personalized messages now so we store/launch same payload later
     const personalizedMessages = contactsToSend
       .map(contact => {
         const messages = replaceContactPlaceholders(
@@ -435,28 +444,11 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
           contact,
         );
         if (!messages) return null;
-
-        // PRIORITY: Use bulk media from route params, fallback to contact media
-        let mediaPath = null;
-
-        if (media && media.uri) {
-          // Use bulk media (from BulkMessagingScreen)
-          mediaPath = media.uri;
-          console.log(
-            `Using bulk media for contact ${contact.name}:`,
-            mediaPath,
-          );
-        } else if (contact.mediaPath) {
-          // Fallback to individual contact media
-          mediaPath = contact.mediaPath;
-          console.log(`Using contact media for ${contact.name}:`, mediaPath);
-        }
-
         return {
           phone: contact.phone,
           message: messages,
           name: contact.name,
-          mediaPath: mediaPath, // This will be sent to Java service
+          mediaPath: contact.mediaPath,
         };
       })
       .filter(msg => msg !== null);
@@ -467,41 +459,20 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
       return;
     }
 
-    // IMPROVED: Validate media URI format before proceeding
-    if (media && media.uri) {
-      const isValidUri =
-        media.uri.startsWith('file://') || media.uri.startsWith('content://');
-
-      if (!isValidUri) {
-        Alert.alert(
-          'Invalid Media URI',
-          `The media file URI format is invalid: ${media.uri.substring(
-            0,
-            50,
-          )}...\n\nPlease select the media again.`,
-        );
-        setIsSending(false);
-        return;
-      }
-
-      console.log('✅ Media URI validation passed:', media.uri);
-    }
-
     // Ask user whether to Send Now or Schedule
     Alert.alert(
-      'Send Messages',
-      media
-        ? `Ready to send ${personalizedMessages.length} messages with media attachment`
-        : `Ready to send ${personalizedMessages.length} messages`,
+      'Send Type',
+      'Do you want to send messages now !',
       [
         {
-          text: 'Cancel',
+          text: 'Dont Send',
           style: 'cancel',
           onPress: () => setIsSending(false),
         },
         {
           text: 'Send Now',
           onPress: async () => {
+            // Send Now flow:
             try {
               // Permission checks
               if (needsHelp) {
@@ -540,19 +511,23 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
                 }
               }
 
-              // Reserve points
+              // Reserve / deduct points (immediately before actual send)
               try {
                 const newBalance = await reservePointsForMessagesByIds(
                   selectedIds,
                 );
                 if (newBalance?.new_balance !== undefined) {
+                  // some bridges return more complex object, but your JS wrapper returns a value
+                  // update points using whatever shape you get
                   if (typeof newBalance === 'number') setPoints(newBalance);
                   else if (newBalance.new_balance)
                     setPoints(newBalance.new_balance);
                 } else {
+                  // if reserve returned a number
                   if (typeof newBalance === 'number') setPoints(newBalance);
                 }
               } catch (reserveErr) {
+                // handle insufficient points
                 if (reserveErr && reserveErr.code === 'INSUFFICIENT_POINTS') {
                   setIsSending(false);
                   return handleInsufficientPoints(reserveErr);
@@ -560,7 +535,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
                 throw reserveErr;
               }
 
-              // Insert into sentmessages log
+              // Insert into sentmessages log (immediate send) - store payload for reporting
               try {
                 await insertSentMessage(
                   [
@@ -580,13 +555,8 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
                 );
               }
 
-              // Launch send
-              console.log(
-                '🚀 Launching WhatsApp with messages:',
-                personalizedMessages.length,
-              );
+              // Launch send (your existing function handles the details)
               launchWhatsappMessage(personalizedMessages, whatsappPackage);
-
               navigation.navigate('WhatsappResultScreen', {
                 totalContacts: personalizedMessages,
                 whatsappPackage,
@@ -599,11 +569,204 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
             }
           },
         },
+        {
+          text: 'Schedule',
+          onPress: async () => {
+            // Schedule flow:
+            // We'll keep UI open for user to pick a date/time
+            // Save the pending payload into a ref while user picks date
+            pendingScheduleRef.current = {personalizedMessages, selectedIds};
+            setShowDatePicker(true);
+            setIsSending(false); // show button as idle while user chooses time
+          },
+        },
       ],
       {cancelable: true},
     );
   };
 
+  // Main send handler (keeps your original flow but integrates schedule)
+  const handleSendMessages = async () => {
+    if (isSending) return;
+    setIsSending(true);
+
+    const contactsToSend = contacts.filter(
+      contact => selectedContacts[contact.id],
+    );
+
+    if (contactsToSend.length === 0) {
+      Alert.alert('No Contacts', 'Please select at least one contact.');
+      setIsSending(false);
+      return;
+    }
+
+    const selectedIds = contactsToSend.map(c => c.id);
+
+    // Build personalized messages now so we store/launch same payload later
+    const personalizedMessages = contactsToSend
+      .map(contact => {
+        const messages = replaceContactPlaceholders(
+          templateList[contact.id] || message,
+          contact,
+        );
+        if (!messages) return null;
+
+        // FIX: Use bulk media.uri if available, else contact.mediaPath
+        const mediaPath = media ? media.uri : contact.mediaPath;
+
+        return {
+          phone: contact.phone,
+          message: messages,
+          name: contact.name,
+          mediaPath, // Now includes bulk media!
+        };
+      })
+      .filter(msg => msg !== null);
+
+    if (personalizedMessages.length === 0) {
+      Alert.alert('Error', 'No valid messages could be generated.');
+      setIsSending(false);
+      return;
+    }
+
+    // NEW: Validate media URI if media is present
+    if (
+      media &&
+      !media.uri.startsWith('file://') &&
+      !media.uri.startsWith('content://')
+    ) {
+      Alert.alert('Invalid Media URI', 'Please select a valid image.');
+      setIsSending(false); // Reset UI state
+      return;
+    }
+
+    // Ask user whether to Send Now or Schedule
+    Alert.alert(
+      'Send Type',
+      'Do you want to send messages now !',
+      [
+        {
+          text: 'Dont Send',
+          style: 'cancel',
+          onPress: () => setIsSending(false),
+        },
+        {
+          text: 'Send Now',
+          onPress: async () => {
+            // Send Now flow:
+            try {
+              // Permission checks
+              if (needsHelp) {
+                const enabled = await checkAccessibilityPermission();
+                if (!enabled) {
+                  Alert.alert(
+                    'Permission Required',
+                    'Accessibility is required for automated sending. Please enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openSettings},
+                    ],
+                  );
+                  return;
+                }
+              } else {
+                const overlayGranted = await checkOverlayPermission();
+                if (!overlayGranted) {
+                  Alert.alert(
+                    'Overlay Permission Required',
+                    'Overlay permission is required for manual sending. Enable it in settings.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => setIsSending(false),
+                      },
+                      {text: 'Go to Settings', onPress: openOverlaySettings},
+                    ],
+                  );
+                  return;
+                }
+              }
+
+              // Reserve / deduct points (immediately before actual send)
+              try {
+                const newBalance = await reservePointsForMessagesByIds(
+                  selectedIds,
+                );
+                if (newBalance?.new_balance !== undefined) {
+                  // some bridges return more complex object, but your JS wrapper returns a value
+                  // update points using whatever shape you get
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                  else if (newBalance.new_balance)
+                    setPoints(newBalance.new_balance);
+                } else {
+                  // if reserve returned a number
+                  if (typeof newBalance === 'number') setPoints(newBalance);
+                }
+              } catch (reserveErr) {
+                // handle insufficient points
+                if (reserveErr && reserveErr.code === 'INSUFFICIENT_POINTS') {
+                  setIsSending(false);
+                  return handleInsufficientPoints(reserveErr);
+                }
+                throw reserveErr;
+              }
+
+              // Insert into sentmessages log (immediate send) - store payload for reporting
+              try {
+                await insertSentMessage(
+                  [
+                    {
+                      isScheduled: false,
+                      scheduledTime: null,
+                      campaignId: campaign.id,
+                      personalizedMessages,
+                    },
+                  ],
+                  new Date().toISOString(),
+                );
+              } catch (e) {
+                console.warn(
+                  'Failed to insertSentMessage log for immediate send',
+                  e,
+                );
+              }
+
+              // Launch send (your existing function handles the details)
+              launchWhatsappMessage(personalizedMessages, whatsappPackage);
+              navigation.navigate('WhatsappResultScreen', {
+                totalContacts: personalizedMessages,
+                whatsappPackage,
+              });
+            } catch (e) {
+              console.error('Send Now error', e);
+              Alert.alert('Error', String(e.message || e));
+            } finally {
+              setIsSending(false);
+            }
+          },
+        },
+        // {
+        //   text: 'Schedule',
+        //   onPress: async () => {
+        //     // Schedule flow:
+        //     // We'll keep UI open for user to pick a date/time
+        //     // Save the pending payload into a ref while user picks date
+        //     pendingScheduleRef.current = {personalizedMessages, selectedIds};
+        //     setShowDatePicker(true);
+        //     setIsSending(false); // show button as idle while user chooses time
+        //   },
+        // },
+      ],
+      {cancelable: true},
+    );
+  };
+
+  // Handle insufficient points flow (watch ad / earn)
   const handleInsufficientPoints = async err => {
     try {
       Alert.alert(
@@ -680,6 +843,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   return (
     <View
       style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      {/* Top Banner Ad */}
       <View style={styles.bannerContainer}>
         <BannerAd
           unitId={AD_UNIT_TOP}
@@ -693,25 +857,8 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
       </View>
 
       <Text style={[styles.header, {color: theme.colors.onBackground}]}>
-        Select Contacts {media ? '📎' : ''}
+        Select Contacts
       </Text>
-
-      {/* NEW: Show media indicator if attached */}
-      {media && (
-        <View
-          style={[
-            styles.mediaIndicator,
-            {backgroundColor: theme.colors.primaryContainer},
-          ]}>
-          <Text
-            style={[
-              styles.mediaIndicatorText,
-              {color: theme.colors.onPrimaryContainer},
-            ]}>
-            📎 Media attached: {media.fileName}
-          </Text>
-        </View>
-      )}
 
       <View
         style={[
@@ -811,6 +958,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </DataTable>
       </ScrollView>
 
+      {/* Edit Selected Messages Button */}
       <TouchableOpacity
         style={[
           styles.secondaryButton,
@@ -832,6 +980,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </Text>
       </TouchableOpacity>
 
+      {/* WhatsApp Type Selection */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, {color: theme.colors.onBackground}]}>
           Select WhatsApp Type
@@ -869,6 +1018,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </View>
       </View>
 
+      {/* Help Option */}
       <View
         style={[
           styles.helpSection,
@@ -884,6 +1034,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </Text>
       </View>
 
+      {/* Separate Date and Time Pickers */}
       {showDatePicker && (
         <DateTimePicker
           value={scheduledTime}
@@ -903,6 +1054,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         />
       )}
 
+      {/* Main Send Button */}
       <TouchableOpacity
         style={[styles.sendButton, {backgroundColor: theme.colors.primary}]}
         onPress={handleSendMessages}
@@ -916,6 +1068,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         </Text>
       </TouchableOpacity>
 
+      {/* Bottom Banner Ad */}
       <View style={styles.bannerContainer}>
         <BannerAd
           unitId={AD_UNIT_BOTTOM}
@@ -928,6 +1081,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
         />
       </View>
 
+      {/* Message Editor Modal */}
       {isModalVisible && (
         <MessageEditorModal
           isModalVisible={isModalVisible}
@@ -943,6 +1097,7 @@ const ContactFilterScreen = ({navigation, route, toggleTheme}) => {
   );
 };
 
+// Styles remain the same (copied from your original)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -957,16 +1112,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 6,
     textAlign: 'center',
-  },
-  mediaIndicator: {
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  mediaIndicatorText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   pointsContainer: {
     padding: 12,

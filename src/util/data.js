@@ -480,3 +480,136 @@ export const setBackupPrivateOnly = async enabled => {
 };
 // Export native module in case you need raw calls
 export default CampaignsModule;
+// Add this function to your src/util/data.js file
+
+/**
+ * Get a sent message by its row ID (for scheduled messages)
+ * @param {number} rowId - The database row ID
+ * @returns {Promise<Object|null>} The message record or null if not found
+ */
+export const getSentMessageById = async rowId => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM sentmessages WHERE id = ?`,
+        [rowId],
+        (_, {rows}) => {
+          if (rows.length > 0) {
+            const record = rows.item(0);
+            console.log(`✅ Found scheduled message with ID ${rowId}`);
+            resolve(record);
+          } else {
+            console.log(`❌ No scheduled message found with ID ${rowId}`);
+            resolve(null);
+          }
+        },
+        (_, error) => {
+          console.error('Error fetching sent message by ID:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};
+
+/**
+ * Update the sent status of a scheduled message
+ * @param {number} rowId - The database row ID
+ * @param {boolean} sent - Whether the message was sent
+ * @returns {Promise<boolean>} Success status
+ */
+export const updateSentMessageStatus = async (rowId, sent = true) => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `UPDATE sentmessages SET sent = ?, timestamp = ? WHERE id = ?`,
+        [sent ? 1 : 0, new Date().toISOString(), rowId],
+        (_, result) => {
+          if (result.rowsAffected > 0) {
+            console.log(`✅ Updated message ${rowId} sent status to ${sent}`);
+            resolve(true);
+          } else {
+            console.log(`⚠️ No rows updated for message ${rowId}`);
+            resolve(false);
+          }
+        },
+        (_, error) => {
+          console.error('Error updating sent message status:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};
+
+/**
+ * Get all scheduled messages that haven't been sent yet
+ * @returns {Promise<Array>} Array of pending scheduled messages
+ */
+export const getPendingScheduledMessages = async () => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM sentmessages WHERE sent = 0 ORDER BY timestamp DESC`,
+        [],
+        (_, {rows}) => {
+          const messages = [];
+          for (let i = 0; i < rows.length; i++) {
+            const record = rows.item(i);
+            // Parse the data field to check if it's scheduled
+            try {
+              const data =
+                typeof record.data === 'string'
+                  ? JSON.parse(record.data)
+                  : record.data;
+
+              if (data?.isScheduled) {
+                messages.push({
+                  ...record,
+                  parsedData: data,
+                });
+              }
+            } catch (e) {
+              console.warn(`Could not parse data for record ${record.id}`);
+            }
+          }
+          console.log(`✅ Found ${messages.length} pending scheduled messages`);
+          resolve(messages);
+        },
+        (_, error) => {
+          console.error('Error fetching pending scheduled messages:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};
+
+/**
+ * Cancel a scheduled message (mark as sent without actually sending)
+ * @param {number} rowId - The database row ID
+ * @returns {Promise<boolean>} Success status
+ */
+export const cancelScheduledMessage = async rowId => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `DELETE FROM sentmessages WHERE id = ?`,
+        [rowId],
+        (_, result) => {
+          if (result.rowsAffected > 0) {
+            console.log(`✅ Cancelled scheduled message ${rowId}`);
+            resolve(true);
+          } else {
+            console.log(`⚠️ No message found to cancel with ID ${rowId}`);
+            resolve(false);
+          }
+        },
+        (_, error) => {
+          console.error('Error cancelling scheduled message:', error);
+          reject(error);
+        },
+      );
+    });
+  });
+};

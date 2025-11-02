@@ -959,7 +959,40 @@ fun getRecentChatsOld(app: String?, promise: Promise) {
     }
 }
 
+@ReactMethod
+fun hasEnoughPoints(amount: Int, promise: Promise) {
+    if (isPremium()) {
+        promise.resolve(true)
+        return
+    }
+    val db = dbHelper.readableDatabase
+    val current = getPointsInternal(db)
+    promise.resolve(current >= amount)
+}
 
+@ReactMethod
+fun deductPoints(amount: Int, promise: Promise) {
+    if (isPremium()) {
+        promise.resolve(true)
+        return
+    }
+    val db = dbHelper.writableDatabase
+    db.beginTransaction()
+    try {
+        val current = getPointsInternal(db)
+        if (current < amount) {
+            promise.reject("INSUFFICIENT_POINTS", "Need $amount points")
+            return
+        }
+        setPointsInternal(db, current - amount)
+        db.setTransactionSuccessful()
+        promise.resolve(true)
+    } catch (e: Exception) {
+        promise.reject("DEDUCT_ERROR", e)
+    } finally {
+        db.endTransaction()
+    }
+}
 
 
    

@@ -175,42 +175,270 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         }, 5000);
     }
 
-    private void sendMediaWithCaption(Contact contact) {
-        try {
-            File mediaFile = new File(contact.mediaPath);
+    // IMPROVED sendMediaWithCaption() method for AppAccessibilityService.java
+    // Replace your existing sendMediaWithCaption() method with this one
+
+// ============================================
+// SMARTEST SOLUTION - Waits for button to appear, then clicks
+// ============================================
+// This checks if send button is VISIBLE and ENABLED before clicking
+
+private void sendMediaWithCaption(Contact contact) {
+    try {
+        if (contact.mediaPath == null || contact.mediaPath.isEmpty()) {
+            Log.e(TAG, "Media path is null or empty");
+            sendMessagesSequentially(contact, 0);
+            return;
+        }
+
+        Log.d(TAG, "=== SMART AUTO MEDIA SEND ===");
+        Log.d(TAG, "Contact: " + contact.name + " (" + contact.phone + ")");
+        Log.d(TAG, "Media: " + contact.mediaPath);
+
+        Uri mediaUri;
+        
+        if (contact.mediaPath.startsWith("content://")) {
+            mediaUri = Uri.parse(contact.mediaPath);
+        } else {
+            String cleanPath = contact.mediaPath.replace("file://", "");
+            File mediaFile = new File(cleanPath);
+            
             if (!mediaFile.exists()) {
-                Log.e(TAG, "Media file does not exist: " + contact.mediaPath);
+                Log.e(TAG, "File not found: " + cleanPath);
                 sendMessagesSequentially(contact, 0);
                 return;
             }
+            
+            mediaUri = FileProvider.getUriForFile(this, getPackageName() + ".provider", mediaFile);
+        }
 
-            String caption = contact.messages.isEmpty() ? "" : contact.messages.get(0);
+        String caption = contact.messages.isEmpty() ? "" : contact.messages.get(0);
+        String mimeType = getMimeType(contact.mediaPath);
 
-            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", mediaFile);
-            Intent sendIntent = new Intent(Intent.ACTION_SEND);
-            sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
-            sendIntent.putExtra(Intent.EXTRA_TEXT, caption);
-            sendIntent.setType(getMimeType(mediaFile.getAbsolutePath()));
-            sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(sendIntent);
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType(mimeType);
+        intent.setPackage(selectedWhatsAppPackage);
+        intent.putExtra(Intent.EXTRA_STREAM, mediaUri);
+        intent.putExtra(Intent.EXTRA_TEXT, caption);
+        
+        String cleanPhone = contact.phone.replace("+", "").replace(" ", "").replace("-", "");
+        intent.putExtra("jid", cleanPhone + "@s.whatsapp.net");
+        
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            // Send remaining messages after media
-            handler.postDelayed(() -> {
-                if (contact.messages.size() > 1) {
-                    sendMessagesSequentially(contact, 1);
-                } else {
-                    markContactSuccess(contact);
-                    currentContactIndex++;
-                    handler.postDelayed(this::openNextContact, 3000);
-                    return;
-                }
-            }, 8000);
-        } catch (Exception e) {
-            Log.e(TAG, "Error sending media", e);
-            currentContactIndex++;
-    handler.postDelayed(this::openNextContact, 2000);
+        startActivity(intent);
+        Log.d(TAG, "✅ WhatsApp media screen launched");
+
+        // Wait 3 seconds for screen to stabilize, then start smart polling
+        handler.postDelayed(() -> {
+            smartPollForSendButton(contact, 0, System.currentTimeMillis());
+        }, 3000);
+
+    } catch (Exception e) {
+        Log.e(TAG, "Error in sendMediaWithCaption", e);
+        sendMessagesSequentially(contact, 0);
+    }
+}
+
+// Smart polling: checks button state before clicking
+private void smartPollForSendButton(Contact contact, int pollCount, long startTime) {
+    long elapsed = System.currentTimeMillis() - startTime;
+    
+    // Timeout after 20 seconds
+    if (elapsed > 20000) {
+        Log.e(TAG, "Timeout waiting for send button");
+        handlePostMediaSend(contact);
+        return;
+    }
+
+    // Max 40 polls
+    if (pollCount >= 40) {
+        Log.e(TAG, "Max polls reached");
+        handlePostMediaSend(contact);
+        return;
+    }
+
+    AccessibilityNodeInfo root = getRootInActiveWindow();
+    if (root == null) {
+        Log.d(TAG, "Root null, retrying... (poll " + (pollCount + 1) + ")");
+        handler.postDelayed(() -> {
+            smartPollForSendButton(contact, pollCount + 1, startTime);
+        }, 500);
+        return;
+    }
+
+    // Find send button and check if it's ready
+    SendButtonInfo buttonInfo = findAndAnalyzeSendButton(root);
+    
+    if (buttonInfo.found) {
+        if (buttonInfo.enabled && buttonInfo.clickable) {
+            Log.d(TAG, "✅ Send button READY - Clicking now!");
+            boolean clicked = buttonInfo.node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            
+            if (clicked) {
+                Log.d(TAG, "✅✅ Click successful!");
+                handler.postDelayed(() -> {
+                    handlePostMediaSend(contact);
+                }, 3000);
+                return;
+            } else {
+                Log.e(TAG, "Click action returned false, retrying...");
+            }
+        } else {
+            Log.d(TAG, "Send button found but not ready (enabled=" + buttonInfo.enabled + 
+                       ", clickable=" + buttonInfo.clickable + "), waiting...");
+        }
+    } else {
+        Log.d(TAG, "Send button not found yet (poll " + (pollCount + 1) + "), waiting...");
+    }
+
+    // Try again
+    handler.postDelayed(() -> {
+        smartPollForSendButton(contact, pollCount + 1, startTime);
+    }, 500);
+}
+
+// Helper class to store button info
+private static class SendButtonInfo {
+    boolean found = false;
+    boolean enabled = false;
+    boolean clickable = false;
+    AccessibilityNodeInfo node = null;
+}
+
+// Comprehensive button analysis
+private SendButtonInfo findAndAnalyzeSendButton(AccessibilityNodeInfo root) {
+    SendButtonInfo info = new SendButtonInfo();
+    
+    if (root == null) return info;
+
+    // Try all possible IDs
+    String[] possibleIds = {
+        selectedWhatsAppPackage + ":id/send",
+        selectedWhatsAppPackage + ":id/fab",
+        selectedWhatsAppPackage + ":id/send_btn",
+        selectedWhatsAppPackage + ":id/conversation_entry_action_button",
+        selectedWhatsAppPackage + ":id/send_round"
+    };
+
+    for (String id : possibleIds) {
+        AccessibilityNodeInfo node = findNodeByViewId(root, id);
+        if (node != null) {
+            info.found = true;
+            info.enabled = node.isEnabled();
+            info.clickable = node.isClickable();
+            info.node = node;
+            
+            Log.d(TAG, "Button analysis - ID: " + id + 
+                       ", Enabled: " + info.enabled + 
+                       ", Clickable: " + info.clickable +
+                       ", Visible: " + node.isVisibleToUser());
+            
+            if (info.enabled && info.clickable) {
+                return info; // Found a good one
+            }
         }
     }
+
+    // Try by content description if not found by ID
+    if (!info.found) {
+        AccessibilityNodeInfo node = findNodeByContentDescription(root, "Send");
+        if (node != null) {
+            info.found = true;
+            info.enabled = node.isEnabled();
+            info.clickable = node.isClickable();
+            info.node = node;
+            Log.d(TAG, "Button found by content description");
+        }
+    }
+
+    // Try finding FAB
+    if (!info.found) {
+        AccessibilityNodeInfo node = findFloatingActionButton(root);
+        if (node != null) {
+            info.found = true;
+            info.enabled = node.isEnabled();
+            info.clickable = node.isClickable();
+            info.node = node;
+            Log.d(TAG, "FAB found");
+        }
+    }
+
+    return info;
+}
+
+private AccessibilityNodeInfo findFloatingActionButton(AccessibilityNodeInfo root) {
+    if (root == null) return null;
+    
+    if (root.getClassName() != null && 
+        root.getClassName().toString().contains("FloatingActionButton")) {
+        return root;
+    }
+    
+    for (int i = 0; i < root.getChildCount(); i++) {
+        AccessibilityNodeInfo child = root.getChild(i);
+        if (child != null) {
+            AccessibilityNodeInfo result = findFloatingActionButton(child);
+            if (result != null) {
+                return result;
+            }
+        }
+    }
+    
+    return null;
+}
+
+private AccessibilityNodeInfo findNodeByContentDescription(AccessibilityNodeInfo root, String description) {
+    if (root == null) return null;
+    
+    if (root.getContentDescription() != null) {
+        String contentDesc = root.getContentDescription().toString();
+        if (contentDesc.equalsIgnoreCase(description) || contentDesc.contains(description)) {
+            return root;
+        }
+    }
+    
+    for (int i = 0; i < root.getChildCount(); i++) {
+        AccessibilityNodeInfo child = root.getChild(i);
+        if (child != null) {
+            AccessibilityNodeInfo result = findNodeByContentDescription(child, description);
+            if (result != null) {
+                return result;
+            }
+        }
+    }
+    
+    return null;
+}
+
+private void handlePostMediaSend(Contact contact) {
+    if (contact == null) return;
+
+    Log.d(TAG, "Post-media processing for: " + contact.name);
+
+    handler.postDelayed(() -> {
+        if (contact.messages.size() > 1) {
+            Log.d(TAG, "Sending remaining " + (contact.messages.size() - 1) + " messages");
+            
+            Intent chatIntent = new Intent(Intent.ACTION_VIEW);
+            chatIntent.setData(Uri.parse("whatsapp://send?phone=" + contact.phone.replace("+", "")));
+            chatIntent.setPackage(selectedWhatsAppPackage);
+            chatIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(chatIntent);
+            
+            handler.postDelayed(() -> {
+                sendMessagesSequentially(contact, 1);
+            }, 4000);
+        } else {
+            Log.d(TAG, "✅ Contact complete");
+            markContactSuccess(contact);
+            currentContactIndex++;
+            handler.postDelayed(this::openNextContact, 3000);
+        }
+    }, 2000);
+}
+
 
     private void sendMessagesSequentially(Contact contact, int index) {
         if (index >= contact.messages.size()) {

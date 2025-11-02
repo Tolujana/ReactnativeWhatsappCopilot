@@ -68,75 +68,18 @@ const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
     setInputMessage(prev => `${prev} {{${placeholder}}} `);
   };
 
-  // IMPROVED: Better media picker with validation
   const pickMedia = () => {
     launchImageLibrary(
       {
-        mediaType: 'mixed', // Allow both images and videos
+        mediaType: 'mixed',
         selectionLimit: 1,
-        includeBase64: false, // Don't need base64
-        quality: 1, // Full quality
       },
       res => {
-        if (res.didCancel) {
-          console.log('User cancelled media picker');
-          return;
-        }
-
-        if (res.error) {
-          console.error('ImagePicker Error: ', res.error);
-          Alert.alert('Error', 'Failed to pick media. Please try again.');
-          return;
-        }
-
-        if (res.assets && res.assets.length > 0) {
-          const selectedMedia = res.assets[0];
-
-          // Validate URI exists
-          if (!selectedMedia.uri) {
-            Alert.alert('Error', 'Failed to get media file URI.');
-            return;
-          }
-
-          // Validate file size (e.g., max 16MB for WhatsApp)
-          const maxSize = 16 * 1024 * 1024; // 16MB
-          if (selectedMedia.fileSize && selectedMedia.fileSize > maxSize) {
-            Alert.alert(
-              'File Too Large',
-              'Please select a file smaller than 16MB.',
-            );
-            return;
-          }
-
-          // Store complete media info
-          setMedia({
-            uri: selectedMedia.uri,
-            type: selectedMedia.type || 'image', // 'image' or 'video'
-            fileName: selectedMedia.fileName || 'media',
-            fileSize: selectedMedia.fileSize,
-            mimeType: selectedMedia.type,
-          });
-
-          console.log('Media selected:', {
-            uri: selectedMedia.uri,
-            type: selectedMedia.type,
-            size: selectedMedia.fileSize,
-          });
+        if (!res.didCancel && res.assets && res.assets.length > 0) {
+          setMedia(res.assets[0]);
         }
       },
     );
-  };
-
-  // NEW: Remove media function
-  const removeMedia = () => {
-    Alert.alert('Remove Media', 'Are you sure you want to remove this media?', [
-      {text: 'Cancel', style: 'cancel'},
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => setMedia(null),
-      },
-    ]);
   };
 
   const handleAddMessage = () => {
@@ -152,36 +95,15 @@ const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
     setInputMessage('');
   };
 
-  // IMPROVED: Better validation before navigation
   const handleSend = async () => {
-    // Validate messages
     if (messages.length === 0) {
       Alert.alert('No Messages', 'Please add at least one message.');
       return;
     }
 
-    // Validate media if present
-    if (media && media.uri) {
-      // Check if URI format is valid
-      if (
-        !media.uri.startsWith('file://') &&
-        !media.uri.startsWith('content://')
-      ) {
-        Alert.alert(
-          'Invalid Media',
-          'The selected media file format is not valid. Please select again.',
-        );
-        setMedia(null); // Clear invalid media
-        return;
-      }
-
-      console.log('Proceeding with media:', media);
-    }
-
-    // Navigate to contact selection with media
     navigation.navigate('Contact Selection', {
       message: messages,
-      media: media, // Pass complete media object
+      media,
       campaign,
     });
   };
@@ -294,43 +216,19 @@ const BulkMessagingScreen = ({navigation, route, toggleTheme}) => {
           size={BannerAdSize.BANNER}
         />
       </View>
-
-      {/* IMPROVED: Better media attachment UI */}
-      <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
+      {/* <TouchableOpacity style={styles.mediaButton} onPress={pickMedia}>
         <Icon name="attachment" size={22} color={theme.colors.primary} />
         <Text style={{marginLeft: 6, color: theme.colors.primary}}>
-          {media ? 'Change Media' : 'Attach Media'}
+          Attach Media
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
-      {/* IMPROVED: Better media preview with remove option */}
       {media && (
-        <View
-          style={[
-            styles.preview,
-            {
-              backgroundColor: theme.colors.surfaceVariant,
-              padding: 12,
-              borderRadius: 8,
-            },
-          ]}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Image source={{uri: media.uri}} style={styles.previewImage} />
-            <View style={{flex: 1, marginLeft: 12}}>
-              <Text
-                style={{color: theme.colors.onSurface, fontWeight: '600'}}
-                numberOfLines={1}>
-                {media.fileName}
-              </Text>
-              <Text
-                style={{color: theme.colors.onSurfaceVariant, fontSize: 12}}>
-                {media.type} • {(media.fileSize / 1024).toFixed(0)} KB
-              </Text>
-            </View>
-            <TouchableOpacity onPress={removeMedia} style={{padding: 8}}>
-              <Icon name="close-circle" size={28} color={theme.colors.error} />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.preview}>
+          <Image source={{uri: media.uri}} style={styles.previewImage} />
+          <Text style={{color: theme.colors.onSurface}} numberOfLines={1}>
+            {media.fileName}
+          </Text>
         </View>
       )}
 
@@ -416,9 +314,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   previewImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
+    width: 100,
+    height: 100,
+    borderRadius: 10,
   },
   sendButton: {
     padding: 14,

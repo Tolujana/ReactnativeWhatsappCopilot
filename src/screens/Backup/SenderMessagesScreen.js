@@ -7,13 +7,17 @@ import {
   preloadRewardedAd,
   showRewardedAd,
 } from '../../util/data';
+import {BannerAd, BannerAdSize, TestIds} from 'react-native-google-mobile-ads';
 import Header from '../../components/Header';
+
+const adUnitId = __DEV__
+  ? TestIds.BANNER
+  : 'ca-app-pub-7993847549836206/9152830275'; // Replace with your real banner ad unit ID
 
 const SenderMessagesScreen = ({route, toggleTheme}) => {
   const theme = useTheme();
   const {app, contactIdentifier, name} = route.params || {}; // Fallback if params missing
   const [messages, setMessages] = useState([]);
-  const [adShown, setAdShown] = useState(false);
   const [error, setError] = useState(null);
   const [isRecentSender, setIsRecentSender] = useState(false); // Flag for better prompt
   const [loading, setLoading] = useState(false); // Added loading state
@@ -24,22 +28,36 @@ const SenderMessagesScreen = ({route, toggleTheme}) => {
       return;
     }
     loadMessages();
-    preloadRewardedAd(); // Preload for inline ads
   }, [app, contactIdentifier]);
+
+  const deduplicateMessages = msgs => {
+    if (msgs.length === 0) return [];
+    // Sort by timestamp DESC (newest first)
+    const sorted = [...msgs].sort(
+      (a, b) => Number(b.timestamp) - Number(a.timestamp),
+    );
+    const deduped = [];
+    let prevContent = null;
+    for (const msg of sorted) {
+      if (msg.content !== prevContent) {
+        deduped.push(msg);
+        prevContent = msg.content;
+      }
+    }
+    return deduped;
+  };
 
   const loadMessages = async () => {
     setLoading(true); // Set loading
     try {
       setError(null);
       const msgs = await getChatMessages(app, contactIdentifier);
-      // Sort by timestamp ASC for chat order
-      const sorted = msgs.sort(
-        (a, b) => Number(b.timestamp) - Number(a.timestamp),
-      );
-      setMessages(sorted);
+      // Deduplicate consecutive same content messages
+      const deduped = deduplicateMessages(msgs);
+      setMessages(deduped);
       setIsRecentSender(false); // Reset flag
-      if (sorted.length > 0) {
-        Alert.alert('Success', 'Messages refreshed!'); // Alert on successful load
+      if (deduped.length > 0) {
+        Alert.alert('Success', 'Messages refreshed!');
       }
     } catch (e) {
       console.warn('Load messages error', e);
@@ -75,7 +93,7 @@ const SenderMessagesScreen = ({route, toggleTheme}) => {
 
   const renderBubble = ({item, index}) => {
     const isSent = item.isSent;
-    const showAd = (index + 1) % 4 === 0 && index > 0 && !adShown;
+    const showBannerAd = (index + 1) % 4 === 0 && index > 0;
     return (
       <View>
         <View
@@ -96,29 +114,18 @@ const SenderMessagesScreen = ({route, toggleTheme}) => {
             {item.content}
           </Text>
         </View>
-        {showAd && (
+        {showBannerAd && (
           <View style={styles.adContainer}>
             <Card
               style={[styles.adCard, {backgroundColor: theme.colors.surface}]}>
               <Card.Content>
-                <Text
-                  variant="bodyMedium"
-                  style={{color: theme.colors.onSurface}}>
-                  Sponsored Ad
-                </Text>
-                <Button
-                  mode="contained"
-                  onPress={async () => {
-                    try {
-                      await showRewardedAd();
-                      setAdShown(true);
-                    } catch (e) {
-                      Alert.alert('Ad Error', 'Failed to show ad');
-                    }
+                <BannerAd
+                  unitId={adUnitId}
+                  size={BannerAdSize.FULL_BANNER}
+                  requestOptions={{
+                    requestNonPersonalizedAdsOnly: true,
                   }}
-                  style={{backgroundColor: theme.colors.primary}}>
-                  Watch for Points
-                </Button>
+                />
               </Card.Content>
             </Card>
           </View>
@@ -252,7 +259,7 @@ const styles = StyleSheet.create({
   content: {fontSize: 16},
   timestamp: {fontSize: 12, opacity: 0.7, marginBottom: 4},
   adContainer: {alignSelf: 'center', marginVertical: 8},
-  adCard: {width: 200, elevation: 2},
+  adCard: {width: '100%', elevation: 2},
   errorContainer: {
     flex: 1,
     justifyContent: 'center',

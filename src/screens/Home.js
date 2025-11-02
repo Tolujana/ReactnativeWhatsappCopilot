@@ -31,11 +31,11 @@ const MENU_ITEMS = {
       screen: 'Campaign Selection',
     },
     {title: 'Message history', icon: 'history', screen: 'MessageReport'},
-    // {
-    //   title: 'Scheduled Messages',
-    //   icon: 'calendar',
-    //   screen: 'ScheduledMessages',
-    // },
+    {
+      title: 'Scheduled Messages',
+      icon: 'calendar',
+      screen: 'ScheduledMessages',
+    },
     {title: 'Settings', icon: 'cog', screen: 'SettingsScreen'},
   ],
   'Media Management': [

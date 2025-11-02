@@ -3,4 +3,21 @@
     <external-path name="external_files" path="." />
     <external-path name="status_saver_gallery" path="DCIM/StatusSaver" />
     <external-path name="status_saver_pictures" path="Pictures/StatusSaver" />
+     <files-path name="internal_files" path="." />
+    <!-- External app-specific files (for Android 10+) -->
+    <!-- This is where image picker usually saves picked media -->
+    <external-files-path name="external_app_files" path="." />
+    
+    <!-- Pictures directory (common location for media) -->
+    <external-files-path name="pictures" path="Pictures/" />
+    
+    <!-- DCIM directory (camera photos) -->
+    <external-path name="dcim" path="DCIM/" />
+    
+    <!-- Downloads directory -->
+    <external-path name="downloads" path="Download/" />
+
+
+
+
 </paths>
